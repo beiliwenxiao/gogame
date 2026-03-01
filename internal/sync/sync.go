@@ -1,5 +1,5 @@
-// Package sync provides synchronization modules for the MMRPG game engine,
-// supporting both lockstep (frame) synchronization and authoritative state synchronization.
+// Package sync 为 MMRPG 游戏引擎提供同步模块，
+// 支持帧同步（锁步）和权威状态同步两种模式。
 package sync
 
 import (
@@ -14,31 +14,31 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Syncer interface – unified sync abstraction
+// Syncer 接口 – 统一同步抽象
 // ---------------------------------------------------------------------------
 
-// Syncer is the unified synchronization interface. Upper layers interact with
-// this interface without knowing whether lockstep or state sync is in use.
+// Syncer 是统一的同步接口。上层通过此接口交互，
+// 无需关心底层使用的是锁步同步还是状态同步。
 type Syncer interface {
 	Mode() engine.SyncMode
 	OnInput(session network.Session, input engine.PlayerInput)
 	OnTick(tick uint64)
 	OnReconnect(session network.Session)
-	// AddSession registers a client session with the syncer.
+	// AddSession 向同步器注册客户端会话。
 	AddSession(session network.Session)
-	// RemoveSession unregisters a client session.
+	// RemoveSession 注销客户端会话。
 	RemoveSession(sessionID string)
-	// SessionCount returns the number of active sessions.
+	// SessionCount 返回活跃会话数量。
 	SessionCount() int
 }
 
-// LockstepSyncer extends Syncer with lockstep-specific capabilities.
+// LockstepSyncer 扩展 Syncer，提供锁步同步特有能力。
 type LockstepSyncer interface {
 	Syncer
 	HistoryFrames() int
 }
 
-// StateSyncer extends Syncer with state-sync-specific capabilities.
+// StateSyncer 扩展 Syncer，提供状态同步特有能力。
 type StateSyncer interface {
 	Syncer
 	SnapshotInterval() int
@@ -48,16 +48,16 @@ type StateSyncer interface {
 // SyncManagerConfig
 // ---------------------------------------------------------------------------
 
-// SyncManagerConfig holds configuration for the SyncManager.
+// SyncManagerConfig 保存 SyncManager 的配置。
 type SyncManagerConfig struct {
 	DefaultMode         engine.SyncMode
-	LockstepTimeout     time.Duration // default 100ms
-	HistoryFrames       int           // default 300
-	SnapshotInterval    int           // default 100
-	AutoSwitchThreshold int           // default 50
+	LockstepTimeout     time.Duration // 默认 100ms
+	HistoryFrames       int           // 默认 300
+	SnapshotInterval    int           // 默认 100
+	AutoSwitchThreshold int           // 默认 50
 }
 
-// DefaultSyncManagerConfig returns a SyncManagerConfig with sensible defaults.
+// DefaultSyncManagerConfig 返回带有合理默认值的 SyncManagerConfig。
 func DefaultSyncManagerConfig() SyncManagerConfig {
 	return SyncManagerConfig{
 		DefaultMode:         engine.SyncModeLockstep,
@@ -69,17 +69,17 @@ func DefaultSyncManagerConfig() SyncManagerConfig {
 }
 
 // ---------------------------------------------------------------------------
-// FrameData – a single lockstep frame
+// FrameData – 单个锁步帧
 // ---------------------------------------------------------------------------
 
-// FrameData represents a single lockstep frame containing all player inputs.
+// FrameData 表示包含所有玩家输入的单个锁步帧。
 type FrameData struct {
 	FrameID uint64               `json:"frame_id"`
 	Inputs  []engine.PlayerInput `json:"inputs"`
 }
 
 // ---------------------------------------------------------------------------
-// lockstepSyncer implementation
+// lockstepSyncer 实现
 // ---------------------------------------------------------------------------
 
 type lockstepSyncer struct {
@@ -88,17 +88,17 @@ type lockstepSyncer struct {
 	maxHist  int
 	sessions map[string]network.Session // sessionID → Session
 
-	// Per-tick input collection
+	// 每 tick 的输入收集
 	pendingInputs []engine.PlayerInput
 
-	// History ring buffer
+	// 历史环形缓冲区
 	history    []FrameData
-	histHead   int // next write position
-	histCount  int // number of frames stored
+	histHead   int // 下一个写入位置
+	histCount  int // 已存储帧数
 	lastFrame  uint64
 }
 
-// NewLockstepSyncer creates a new lockstep synchronizer.
+// NewLockstepSyncer 创建新的锁步同步器。
 func NewLockstepSyncer(timeout time.Duration, historyFrames int) LockstepSyncer {
 	if timeout <= 0 {
 		timeout = 100 * time.Millisecond
@@ -136,19 +136,19 @@ func (ls *lockstepSyncer) SessionCount() int {
 	return len(ls.sessions)
 }
 
-// OnInput collects a player input for the current tick.
+// OnInput 收集当前 tick 的玩家输入。
 func (ls *lockstepSyncer) OnInput(session network.Session, input engine.PlayerInput) {
 	ls.mu.Lock()
 	defer ls.mu.Unlock()
 	ls.pendingInputs = append(ls.pendingInputs, input)
 }
 
-// OnTick packages all collected inputs into a frame, stores it in history,
-// and broadcasts it to all sessions.
+// OnTick 将收集到的所有输入打包为一帧，存入历史记录，
+// 并广播给所有会话。
 func (ls *lockstepSyncer) OnTick(tick uint64) {
 	ls.mu.Lock()
 
-	// Build frame data from collected inputs
+	// 从收集的输入构建帧数据
 	frame := FrameData{
 		FrameID: tick,
 		Inputs:  ls.pendingInputs,
@@ -157,7 +157,7 @@ func (ls *lockstepSyncer) OnTick(tick uint64) {
 		frame.Inputs = []engine.PlayerInput{}
 	}
 
-	// Store in ring buffer
+	// 存入环形缓冲区
 	ls.history[ls.histHead] = frame
 	ls.histHead = (ls.histHead + 1) % ls.maxHist
 	if ls.histCount < ls.maxHist {
@@ -165,17 +165,17 @@ func (ls *lockstepSyncer) OnTick(tick uint64) {
 	}
 	ls.lastFrame = tick
 
-	// Reset pending inputs for next tick
+	// 重置下一 tick 的待处理输入
 	ls.pendingInputs = nil
 
-	// Snapshot sessions for broadcast (avoid holding lock during I/O)
+	// 快照会话列表用于广播（避免持锁期间进行 I/O）
 	sessions := make([]network.Session, 0, len(ls.sessions))
 	for _, s := range ls.sessions {
 		sessions = append(sessions, s)
 	}
 	ls.mu.Unlock()
 
-	// Serialize and broadcast
+	// 序列化并广播
 	data, err := json.Marshal(frame)
 	if err != nil {
 		log.Printf("[sync] lockstep: failed to marshal frame %d: %v", tick, err)
@@ -188,7 +188,7 @@ func (ls *lockstepSyncer) OnTick(tick uint64) {
 	}
 }
 
-// OnReconnect sends all missing history frames to the reconnecting session.
+// OnReconnect 向重连会话发送所有缺失的历史帧。
 func (ls *lockstepSyncer) OnReconnect(session network.Session) {
 	ls.mu.RLock()
 	frames := ls.getHistoryFramesLocked()
@@ -207,8 +207,8 @@ func (ls *lockstepSyncer) OnReconnect(session network.Session) {
 	}
 }
 
-// getHistoryFramesLocked returns stored history frames in chronological order.
-// Caller must hold at least a read lock.
+// getHistoryFramesLocked 按时间顺序返回已存储的历史帧。
+// 调用方必须至少持有读锁。
 func (ls *lockstepSyncer) getHistoryFramesLocked() []FrameData {
 	if ls.histCount == 0 {
 		return nil
@@ -222,8 +222,8 @@ func (ls *lockstepSyncer) getHistoryFramesLocked() []FrameData {
 	return result
 }
 
-// GetHistoryFrom returns history frames starting from the given frame ID (inclusive).
-// This is used for reconnection to send only the missing frames.
+// GetHistoryFrom 返回从给定帧 ID（含）开始的历史帧。
+// 用于重连时只发送缺失的帧。
 func (ls *lockstepSyncer) GetHistoryFrom(fromFrame uint64) []FrameData {
 	ls.mu.RLock()
 	defer ls.mu.RUnlock()
@@ -237,16 +237,16 @@ func (ls *lockstepSyncer) GetHistoryFrom(fromFrame uint64) []FrameData {
 }
 
 // ---------------------------------------------------------------------------
-// EntityState – tracked entity state for delta computation
+// EntityState – 用于增量计算的实体状态跟踪
 // ---------------------------------------------------------------------------
 
-// EntityState represents the state of a single entity at a point in time.
+// EntityState 表示某时刻单个实体的状态。
 type EntityState struct {
 	EntityID   engine.EntityID    `json:"entity_id"`
 	Properties map[string]float64 `json:"properties"`
 }
 
-// Clone returns a deep copy of the EntityState.
+// Clone 返回 EntityState 的深拷贝。
 func (es EntityState) Clone() EntityState {
 	props := make(map[string]float64, len(es.Properties))
 	for k, v := range es.Properties {
@@ -258,64 +258,63 @@ func (es EntityState) Clone() EntityState {
 	}
 }
 
-// EntityDelta represents the changes to a single entity between two ticks.
+// EntityDelta 表示两个 tick 之间单个实体的变化。
 type EntityDelta struct {
 	EntityID engine.EntityID    `json:"entity_id"`
 	Changed  map[string]float64 `json:"changed,omitempty"`
 	Removed  []string           `json:"removed,omitempty"`
 }
 
-// StateDelta represents all changes in a single tick.
+// StateDelta 表示单个 tick 中的所有变化。
 type StateDelta struct {
 	Tick           uint64        `json:"tick"`
 	EntityDeltas   []EntityDelta `json:"entity_deltas,omitempty"`
 	RemovedEntities []engine.EntityID `json:"removed_entities,omitempty"`
 }
 
-// StateSnapshot represents a complete state snapshot at a given tick.
+// StateSnapshot 表示给定 tick 时的完整状态快照。
 type StateSnapshot struct {
 	Tick     uint64        `json:"tick"`
 	Entities []EntityState `json:"entities"`
 }
 
 // ---------------------------------------------------------------------------
-// AOIProvider – interface for AOI filtering
+// AOIProvider – AOI 过滤接口
 // ---------------------------------------------------------------------------
 
-// AOIProvider is an optional interface that the StateSyncer uses to filter
-// which entities are visible to a given session.
+// AOIProvider 是 StateSyncer 用于过滤哪些实体对给定会话可见的可选接口。
 type AOIProvider interface {
-	// GetVisibleEntities returns the entity IDs visible to the given entity.
+	// GetVisibleEntities 返回给定实体可见的实体 ID 列表。
 	GetVisibleEntities(entityID engine.EntityID) []engine.EntityID
 }
 
 // ---------------------------------------------------------------------------
-// stateSyncer implementation
+// stateSyncer 实现
 // ---------------------------------------------------------------------------
 
 type stateSyncer struct {
 	mu               sync.RWMutex
 	snapshotInterval int
 	sessions         map[string]network.Session
-	sessionEntities  map[string]engine.EntityID // sessionID → entity that session controls
+	sessionEntities  map[string]engine.EntityID // sessionID → 该会话控制的实体
 
-	// Entity state tracking
+	// 实体状态跟踪
 	currentState map[engine.EntityID]EntityState
 	prevState    map[engine.EntityID]EntityState
 
-	// Snapshot storage
+	// 快照存储
 	lastSnapshot   *StateSnapshot
 	lastSnapshotTick uint64
 
-	// Delta history (for reconnection)
+	// 增量历史（用于重连）
 	deltaHistory []StateDelta
-	maxDeltas    int // keep deltas since last snapshot + buffer
+	maxDeltas    int // 保留自上次快照以来的增量 + 缓冲
 
-	// AOI provider (optional)
+	// AOI 提供者（可选）
 	aoiProvider AOIProvider
 }
 
-// NewStateSyncer creates a new state synchronizer.
+// NewStateSyncer 创建新的状态同步器。
 func NewStateSyncer(snapshotInterval int, aoiProvider AOIProvider) StateSyncer {
 	if snapshotInterval <= 0 {
 		snapshotInterval = 100
@@ -354,15 +353,15 @@ func (ss *stateSyncer) SessionCount() int {
 	return len(ss.sessions)
 }
 
-// SetSessionEntity associates a session with the entity it controls (for AOI filtering).
+// SetSessionEntity 将会话与其控制的实体关联（用于 AOI 过滤）。
 func (ss *stateSyncer) SetSessionEntity(sessionID string, entityID engine.EntityID) {
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
 	ss.sessionEntities[sessionID] = entityID
 }
 
-// SetEntityState updates the authoritative state for an entity.
-// This should be called by the game logic each tick.
+// SetEntityState 更新实体的权威状态。
+// 应在每个 tick 由游戏逻辑调用。
 func (ss *stateSyncer) SetEntityState(entityID engine.EntityID, props map[string]float64) {
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
@@ -372,51 +371,51 @@ func (ss *stateSyncer) SetEntityState(entityID engine.EntityID, props map[string
 	}
 }
 
-// RemoveEntity removes an entity from state tracking.
+// RemoveEntity 从状态跟踪中移除实体。
 func (ss *stateSyncer) RemoveEntity(entityID engine.EntityID) {
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
 	delete(ss.currentState, entityID)
 }
 
-// OnInput processes a player input (state sync runs authoritative logic server-side,
-// so inputs are queued for the game logic to process).
+// OnInput 处理玩家输入（状态同步在服务端运行权威逻辑，
+// 因此输入被排队等待游戏逻辑处理）。
 func (ss *stateSyncer) OnInput(session network.Session, input engine.PlayerInput) {
-	// In state sync, inputs are processed by the authoritative game logic.
-	// The syncer just acknowledges receipt; actual processing happens in the game loop.
+	// 状态同步中，输入由权威游戏逻辑处理。
+	// 同步器仅确认接收；实际处理在游戏循环中进行。
 }
 
-// OnTick computes deltas, optionally takes a snapshot, and sends updates to sessions.
+// OnTick 计算增量，可选地生成快照，并向会话发送更新。
 func (ss *stateSyncer) OnTick(tick uint64) {
 	ss.mu.Lock()
 
-	// Compute delta between previous and current state
+	// 计算前后状态的增量
 	delta := ss.computeDeltaLocked(tick)
 
-	// Store delta in history
+	// 将增量存入历史
 	ss.deltaHistory = append(ss.deltaHistory, delta)
 	if len(ss.deltaHistory) > ss.maxDeltas {
 		ss.deltaHistory = ss.deltaHistory[1:]
 	}
 
-	// Check if we need a full snapshot
+	// 检查是否需要完整快照
 	needSnapshot := tick > 0 && tick%uint64(ss.snapshotInterval) == 0
 	var snapshot *StateSnapshot
 	if needSnapshot {
 		snapshot = ss.takeSnapshotLocked(tick)
 		ss.lastSnapshot = snapshot
 		ss.lastSnapshotTick = tick
-		// Trim delta history: only keep deltas after the snapshot
+		// 裁剪增量历史：只保留快照之后的增量
 		ss.trimDeltaHistoryLocked(tick)
 	}
 
-	// Update prevState to current for next tick's delta computation
+	// 将 prevState 更新为当前状态，用于下一 tick 的增量计算
 	ss.prevState = make(map[engine.EntityID]EntityState, len(ss.currentState))
 	for id, state := range ss.currentState {
 		ss.prevState[id] = state.Clone()
 	}
 
-	// Snapshot sessions and their entity mappings for sending
+	// 快照会话及其实体映射，用于发送
 	infos := make([]syncSessionInfo, 0, len(ss.sessions))
 	for sid, s := range ss.sessions {
 		eid, has := ss.sessionEntities[sid]
@@ -425,7 +424,7 @@ func (ss *stateSyncer) OnTick(tick uint64) {
 
 	ss.mu.Unlock()
 
-	// Send snapshot or delta to each session
+	// 向每个会话发送快照或增量
 	if needSnapshot && snapshot != nil {
 		ss.broadcastSnapshot(snapshot, infos)
 	} else if len(delta.EntityDeltas) > 0 || len(delta.RemovedEntities) > 0 {
@@ -433,15 +432,15 @@ func (ss *stateSyncer) OnTick(tick uint64) {
 	}
 }
 
-// computeDeltaLocked computes the state delta. Caller must hold the lock.
+// computeDeltaLocked 计算状态增量。调用方必须持有锁。
 func (ss *stateSyncer) computeDeltaLocked(tick uint64) StateDelta {
 	delta := StateDelta{Tick: tick}
 
-	// Check for changed/new entities
+	// 检查变化/新增实体
 	for id, cur := range ss.currentState {
 		prev, existed := ss.prevState[id]
 		if !existed {
-			// New entity – all properties are "changed"
+			// 新实体 – 所有属性均为"变化"
 			ed := EntityDelta{
 				EntityID: id,
 				Changed:  make(map[string]float64, len(cur.Properties)),
@@ -453,7 +452,7 @@ func (ss *stateSyncer) computeDeltaLocked(tick uint64) StateDelta {
 			continue
 		}
 
-		// Existing entity – find property changes
+		// 已有实体 – 查找属性变化
 		ed := EntityDelta{EntityID: id}
 		for k, v := range cur.Properties {
 			if oldV, ok := prev.Properties[k]; !ok || oldV != v {
@@ -463,7 +462,7 @@ func (ss *stateSyncer) computeDeltaLocked(tick uint64) StateDelta {
 				ed.Changed[k] = v
 			}
 		}
-		// Find removed properties
+		// 查找已移除的属性
 		for k := range prev.Properties {
 			if _, ok := cur.Properties[k]; !ok {
 				ed.Removed = append(ed.Removed, k)
@@ -474,7 +473,7 @@ func (ss *stateSyncer) computeDeltaLocked(tick uint64) StateDelta {
 		}
 	}
 
-	// Check for removed entities
+	// 检查已移除实体
 	for id := range ss.prevState {
 		if _, exists := ss.currentState[id]; !exists {
 			delta.RemovedEntities = append(delta.RemovedEntities, id)
@@ -484,7 +483,7 @@ func (ss *stateSyncer) computeDeltaLocked(tick uint64) StateDelta {
 	return delta
 }
 
-// takeSnapshotLocked creates a full state snapshot. Caller must hold the lock.
+// takeSnapshotLocked 创建完整状态快照。调用方必须持有锁。
 func (ss *stateSyncer) takeSnapshotLocked(tick uint64) *StateSnapshot {
 	snap := &StateSnapshot{
 		Tick:     tick,
@@ -496,7 +495,7 @@ func (ss *stateSyncer) takeSnapshotLocked(tick uint64) *StateSnapshot {
 	return snap
 }
 
-// trimDeltaHistoryLocked removes deltas older than the snapshot tick.
+// trimDeltaHistoryLocked 移除早于快照 tick 的增量。
 func (ss *stateSyncer) trimDeltaHistoryLocked(snapshotTick uint64) {
 	trimIdx := 0
 	for i, d := range ss.deltaHistory {
@@ -511,7 +510,7 @@ func (ss *stateSyncer) trimDeltaHistoryLocked(snapshotTick uint64) {
 	}
 }
 
-// syncSessionInfo holds session info for broadcast operations.
+// syncSessionInfo 保存广播操作所需的会话信息。
 type syncSessionInfo struct {
 	session   network.Session
 	entityID  engine.EntityID
@@ -549,10 +548,10 @@ func (ss *stateSyncer) broadcastDelta(delta *StateDelta, infos []syncSessionInfo
 	}
 }
 
-// filterForSession filters a snapshot to only include entities visible to the session's entity.
+// filterForSession 过滤快照，只包含对该会话实体可见的实体。
 func (ss *stateSyncer) filterForSession(snapshot *StateSnapshot, entityID engine.EntityID, hasEntity bool) *StateSnapshot {
 	if !hasEntity || ss.aoiProvider == nil {
-		return snapshot // no AOI filtering
+		return snapshot // 无 AOI 过滤
 	}
 	visible := ss.getVisibleSet(entityID)
 	filtered := &StateSnapshot{
@@ -567,10 +566,10 @@ func (ss *stateSyncer) filterForSession(snapshot *StateSnapshot, entityID engine
 	return filtered
 }
 
-// filterDeltaForSession filters a delta to only include entities visible to the session's entity.
+// filterDeltaForSession 过滤增量，只包含对该会话实体可见的实体。
 func (ss *stateSyncer) filterDeltaForSession(delta *StateDelta, entityID engine.EntityID, hasEntity bool) StateDelta {
 	if !hasEntity || ss.aoiProvider == nil {
-		return *delta // no AOI filtering
+		return *delta // 无 AOI 过滤
 	}
 	visible := ss.getVisibleSet(entityID)
 	filtered := StateDelta{Tick: delta.Tick}
@@ -597,7 +596,7 @@ func (ss *stateSyncer) getVisibleSet(entityID engine.EntityID) map[engine.Entity
 	return visible
 }
 
-// OnReconnect sends the latest snapshot plus subsequent deltas to restore state.
+// OnReconnect 发送最新快照及后续增量以恢复状态。
 func (ss *stateSyncer) OnReconnect(session network.Session) {
 	ss.mu.RLock()
 	snapshot := ss.lastSnapshot
@@ -605,7 +604,7 @@ func (ss *stateSyncer) OnReconnect(session network.Session) {
 	copy(deltas, ss.deltaHistory)
 	ss.mu.RUnlock()
 
-	// Send snapshot first
+	// 先发送快照
 	if snapshot != nil {
 		data, err := json.Marshal(snapshot)
 		if err != nil {
@@ -618,7 +617,7 @@ func (ss *stateSyncer) OnReconnect(session network.Session) {
 		}
 	}
 
-	// Send subsequent deltas
+	// 再发送后续增量
 	for _, d := range deltas {
 		data, err := json.Marshal(d)
 		if err != nil {
@@ -632,15 +631,15 @@ func (ss *stateSyncer) OnReconnect(session network.Session) {
 	}
 }
 
-// ApplyDelta applies a StateDelta to a map of EntityStates, producing the next state.
-// This is a pure function useful for testing delta correctness.
+// ApplyDelta 将 StateDelta 应用到 EntityState 映射，生成下一个状态。
+// 这是一个纯函数，用于测试增量正确性。
 func ApplyDelta(state map[engine.EntityID]EntityState, delta StateDelta) map[engine.EntityID]EntityState {
 	result := make(map[engine.EntityID]EntityState, len(state))
 	for id, es := range state {
 		result[id] = es.Clone()
 	}
 
-	// Apply entity deltas
+	// 应用实体增量
 	for _, ed := range delta.EntityDeltas {
 		es, exists := result[ed.EntityID]
 		if !exists {
@@ -658,7 +657,7 @@ func ApplyDelta(state map[engine.EntityID]EntityState, delta StateDelta) map[eng
 		result[ed.EntityID] = es
 	}
 
-	// Remove entities
+	// 移除实体
 	for _, rid := range delta.RemovedEntities {
 		delete(result, rid)
 	}
@@ -667,17 +666,17 @@ func ApplyDelta(state map[engine.EntityID]EntityState, delta StateDelta) map[eng
 }
 
 // ---------------------------------------------------------------------------
-// SyncManager – factory and manager for per-room syncers
+// SyncManager – 每个房间的同步器工厂和管理器
 // ---------------------------------------------------------------------------
 
-// SyncManager manages synchronization instances per room.
+// SyncManager 管理每个房间的同步实例。
 type SyncManager struct {
 	mu      sync.RWMutex
 	config  SyncManagerConfig
 	syncers map[string]Syncer // roomID → Syncer
 }
 
-// NewSyncManager creates a new SyncManager with the given configuration.
+// NewSyncManager 使用给定配置创建新的 SyncManager。
 func NewSyncManager(config SyncManagerConfig) *SyncManager {
 	if config.LockstepTimeout <= 0 {
 		config.LockstepTimeout = 100 * time.Millisecond
@@ -697,8 +696,8 @@ func NewSyncManager(config SyncManagerConfig) *SyncManager {
 	}
 }
 
-// CreateSyncer creates and registers a syncer for the given room.
-// If mode is not specified (negative), the default mode from config is used.
+// CreateSyncer 为给定房间创建并注册同步器。
+// 若未指定模式（负值），则使用配置中的默认模式。
 func (sm *SyncManager) CreateSyncer(roomID string, mode engine.SyncMode, aoiProvider AOIProvider) (Syncer, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
@@ -721,7 +720,7 @@ func (sm *SyncManager) CreateSyncer(roomID string, mode engine.SyncMode, aoiProv
 	return syncer, nil
 }
 
-// GetSyncer returns the syncer for the given room.
+// GetSyncer 返回给定房间的同步器。
 func (sm *SyncManager) GetSyncer(roomID string) (Syncer, bool) {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
@@ -729,15 +728,15 @@ func (sm *SyncManager) GetSyncer(roomID string) (Syncer, bool) {
 	return s, ok
 }
 
-// RemoveSyncer removes and returns the syncer for the given room.
+// RemoveSyncer 移除并返回给定房间的同步器。
 func (sm *SyncManager) RemoveSyncer(roomID string) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 	delete(sm.syncers, roomID)
 }
 
-// CheckThreshold checks if the session count for a room exceeds the auto-switch
-// threshold and logs a warning if so.
+// CheckThreshold 检查房间的会话数是否超过自动切换阈值，
+// 若超过则记录警告日志。
 func (sm *SyncManager) CheckThreshold(roomID string) {
 	sm.mu.RLock()
 	syncer, ok := sm.syncers[roomID]
@@ -753,14 +752,14 @@ func (sm *SyncManager) CheckThreshold(roomID string) {
 	}
 }
 
-// RoomCount returns the number of rooms managed by the SyncManager.
+// RoomCount 返回 SyncManager 管理的房间数量。
 func (sm *SyncManager) RoomCount() int {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
 	return len(sm.syncers)
 }
 
-// Config returns the current SyncManager configuration.
+// Config 返回当前 SyncManager 配置。
 func (sm *SyncManager) Config() SyncManagerConfig {
 	return sm.config
 }

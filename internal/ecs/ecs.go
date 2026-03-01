@@ -1,4 +1,4 @@
-// Package ecs implements the Entity-Component-System architecture for the MMRPG game engine.
+// Package ecs 实现了 MMRPG 游戏引擎的实体-组件-系统（ECS）架构。
 package ecs
 
 import (
@@ -9,7 +9,7 @@ import (
 	"gfgame/internal/engine"
 )
 
-// ComponentType constants for all core component types.
+// 核心组件类型常量。
 const (
 	CompPosition        engine.ComponentType = 1
 	CompMovement        engine.ComponentType = 2
@@ -21,12 +21,12 @@ const (
 	CompAOI             engine.ComponentType = 8
 )
 
-// Component is the interface that all ECS components must implement.
+// Component 是所有 ECS 组件必须实现的接口。
 type Component interface {
 	Type() engine.ComponentType
 }
 
-// System is the interface for ECS systems that process entities with specific component combinations.
+// System 是 ECS 系统的接口，用于处理具有特定组件组合的实体。
 type System interface {
 	Name() string
 	Priority() int
@@ -34,7 +34,7 @@ type System interface {
 	Update(tick uint64, entities []engine.EntityID, world *World)
 }
 
-// EntityManager defines the interface for managing entities, components, and systems.
+// EntityManager 定义了管理实体、组件和系统的接口。
 type EntityManager interface {
 	CreateEntity() engine.EntityID
 	DestroyEntity(id engine.EntityID)
@@ -46,36 +46,36 @@ type EntityManager interface {
 	Update(tick uint64)
 }
 
-// World is the ECS world that stores entities, components, and systems.
-// Each Scene maintains its own World instance.
+// World 是存储实体、组件和系统的 ECS 世界。
+// 每个 Scene 维护自己的 World 实例。
 type World struct {
 	entities map[engine.EntityID]map[engine.ComponentType]Component
 	systems  []System
 	nextID   atomic.Uint64
 }
 
-// NewWorld creates a new ECS World instance that implements EntityManager.
+// NewWorld 创建一个新的 ECS World 实例，实现 EntityManager 接口。
 func NewWorld() *World {
 	return &World{
 		entities: make(map[engine.EntityID]map[engine.ComponentType]Component),
 	}
 }
 
-// CreateEntity allocates a globally unique EntityID and registers the entity.
+// CreateEntity 分配一个全局唯一的 EntityID 并注册该实体。
 func (w *World) CreateEntity() engine.EntityID {
 	id := engine.EntityID(w.nextID.Add(1))
 	w.entities[id] = make(map[engine.ComponentType]Component)
 	return id
 }
 
-// DestroyEntity removes all components from the entity and deletes it from the world.
+// DestroyEntity 移除实体的所有组件并将其从世界中删除。
 func (w *World) DestroyEntity(id engine.EntityID) {
 	delete(w.entities, id)
 }
 
-// InjectEntity registers an entity with a specific ID in the world.
-// This is used for cross-scene entity transfer where the entity ID must be preserved.
-// If the entity already exists, this is a no-op.
+// InjectEntity 以指定 ID 在世界中注册一个实体。
+// 用于跨场景实体迁移时保留原有实体 ID。
+// 若实体已存在，则此操作为空操作。
 func (w *World) InjectEntity(id engine.EntityID) {
 	if _, exists := w.entities[id]; exists {
 		return
@@ -83,8 +83,8 @@ func (w *World) InjectEntity(id engine.EntityID) {
 	w.entities[id] = make(map[engine.ComponentType]Component)
 }
 
-// AddComponent attaches a component to the specified entity.
-// If the entity does not exist, the call is a no-op.
+// AddComponent 将组件附加到指定实体。
+// 若实体不存在，则此操作为空操作。
 func (w *World) AddComponent(id engine.EntityID, comp Component) {
 	comps, ok := w.entities[id]
 	if !ok {
@@ -93,7 +93,7 @@ func (w *World) AddComponent(id engine.EntityID, comp Component) {
 	comps[comp.Type()] = comp
 }
 
-// RemoveComponent detaches a component of the given type from the entity.
+// RemoveComponent 从实体上移除指定类型的组件。
 func (w *World) RemoveComponent(id engine.EntityID, compType engine.ComponentType) {
 	comps, ok := w.entities[id]
 	if !ok {
@@ -102,7 +102,7 @@ func (w *World) RemoveComponent(id engine.EntityID, compType engine.ComponentTyp
 	delete(comps, compType)
 }
 
-// GetComponent retrieves a component of the given type from the entity.
+// GetComponent 从实体上获取指定类型的组件。
 func (w *World) GetComponent(id engine.EntityID, compType engine.ComponentType) (Component, bool) {
 	comps, ok := w.entities[id]
 	if !ok {
@@ -112,7 +112,7 @@ func (w *World) GetComponent(id engine.EntityID, compType engine.ComponentType) 
 	return comp, found
 }
 
-// Query returns all entity IDs that possess every one of the specified component types.
+// Query 返回拥有所有指定组件类型的实体 ID 列表。
 func (w *World) Query(compTypes ...engine.ComponentType) []engine.EntityID {
 	var result []engine.EntityID
 	for id, comps := range w.entities {
@@ -132,8 +132,8 @@ func hasAll(comps map[engine.ComponentType]Component, required []engine.Componen
 	return true
 }
 
-// RegisterSystem adds a system to the world. Systems are kept sorted by priority
-// (lower number = higher priority = runs first).
+// RegisterSystem 向世界添加一个系统。系统按优先级排序
+// （数值越小 = 优先级越高 = 越先执行）。
 func (w *World) RegisterSystem(sys System) {
 	w.systems = append(w.systems, sys)
 	sort.Slice(w.systems, func(i, j int) bool {
@@ -141,8 +141,8 @@ func (w *World) RegisterSystem(sys System) {
 	})
 }
 
-// Update executes all registered systems in priority order for the given tick.
-// Each system receives only the entities that match its required component set.
+// Update 按优先级顺序执行所有已注册系统，处理给定的 tick。
+// 每个系统只接收匹配其所需组件集的实体。
 func (w *World) Update(tick uint64) {
 	for _, sys := range w.systems {
 		entities := w.Query(sys.RequiredComponents()...)
@@ -150,16 +150,16 @@ func (w *World) Update(tick uint64) {
 	}
 }
 
-// Entities returns the number of live entities in the world.
+// Entities 返回世界中存活实体的数量。
 func (w *World) Entities() int {
 	return len(w.entities)
 }
 
 // ---------------------------------------------------------------------------
-// Core Component types
+// 核心组件类型
 // ---------------------------------------------------------------------------
 
-// PositionComponent stores the spatial position of an entity.
+// PositionComponent 存储实体的空间位置。
 type PositionComponent struct {
 	X, Y, Z    float32
 	MapID      string
@@ -168,7 +168,7 @@ type PositionComponent struct {
 
 func (c *PositionComponent) Type() engine.ComponentType { return CompPosition }
 
-// MovementComponent stores movement state.
+// MovementComponent 存储移动状态。
 type MovementComponent struct {
 	Speed     float32
 	Direction engine.Vector3
@@ -177,7 +177,7 @@ type MovementComponent struct {
 
 func (c *MovementComponent) Type() engine.ComponentType { return CompMovement }
 
-// CombatAttributeComponent stores combat-related stats.
+// CombatAttributeComponent 存储战斗相关属性。
 type CombatAttributeComponent struct {
 	HP, MaxHP      float64
 	MP, MaxMP      float64
@@ -190,7 +190,7 @@ type CombatAttributeComponent struct {
 
 func (c *CombatAttributeComponent) Type() engine.ComponentType { return CompCombatAttribute }
 
-// EquipmentComponent tracks equipped items and lock state.
+// EquipmentComponent 跟踪已装备的物品及锁定状态。
 type EquipmentComponent struct {
 	Slots  map[engine.EquipmentSlotType]*EquipmentItem
 	Locked bool
@@ -198,7 +198,7 @@ type EquipmentComponent struct {
 
 func (c *EquipmentComponent) Type() engine.ComponentType { return CompEquipment }
 
-// EquipmentItem represents a single piece of equipment.
+// EquipmentItem 表示单件装备。
 type EquipmentItem struct {
 	ID         uint64
 	Name       string
@@ -208,7 +208,7 @@ type EquipmentItem struct {
 	Attributes map[string]float64
 }
 
-// SkillComponent stores skill instances and cooldowns.
+// SkillComponent 存储技能实例和冷却时间。
 type SkillComponent struct {
 	Skills    map[uint32]*SkillInstance
 	Cooldowns map[uint32]time.Duration
@@ -216,20 +216,20 @@ type SkillComponent struct {
 
 func (c *SkillComponent) Type() engine.ComponentType { return CompSkill }
 
-// SkillInstance represents a single skill.
+// SkillInstance 表示单个技能实例。
 type SkillInstance struct {
 	ID    uint32
 	Level int
 }
 
-// BuffComponent stores active buffs on an entity.
+// BuffComponent 存储实体上的激活 Buff。
 type BuffComponent struct {
 	ActiveBuffs []*BuffInstance
 }
 
 func (c *BuffComponent) Type() engine.ComponentType { return CompBuff }
 
-// BuffInstance represents a single active buff.
+// BuffInstance 表示单个激活的 Buff。
 type BuffInstance struct {
 	BuffID     uint32
 	SourceID   engine.EntityID
@@ -239,14 +239,14 @@ type BuffInstance struct {
 	Effects    map[string]float64
 }
 
-// NetworkComponent associates an entity with a network session.
+// NetworkComponent 将实体与网络会话关联。
 type NetworkComponent struct {
 	SessionID string
 }
 
 func (c *NetworkComponent) Type() engine.ComponentType { return CompNetwork }
 
-// AOIComponent stores area-of-interest data for an entity.
+// AOIComponent 存储实体的兴趣区域数据。
 type AOIComponent struct {
 	Radius          float32
 	VisibleEntities map[engine.EntityID]bool

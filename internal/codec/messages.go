@@ -7,7 +7,7 @@ import (
 	"math"
 )
 
-// Message IDs for core message types.
+// 核心消息类型的消息 ID。
 const (
 	MsgIDLoginRequest    uint16 = 0x0001
 	MsgIDMoveRequest     uint16 = 0x0002
@@ -17,7 +17,7 @@ const (
 
 // ---------- LoginRequest ----------
 
-// LoginRequest represents a client login message.
+// LoginRequest 表示客户端登录消息。
 type LoginRequest struct {
 	Token           string `json:"token"`
 	ProtocolVersion uint32 `json:"protocol_version"`
@@ -25,7 +25,7 @@ type LoginRequest struct {
 
 func (m *LoginRequest) Marshal() ([]byte, error) {
 	tokenBytes := []byte(m.Token)
-	// Format: [4-byte token length][token bytes][4-byte protocol version]
+	// 格式：[4字节 token 长度][token 字节][4字节协议版本]
 	buf := make([]byte, 4+len(tokenBytes)+4)
 	binary.BigEndian.PutUint32(buf[0:4], uint32(len(tokenBytes)))
 	copy(buf[4:4+len(tokenBytes)], tokenBytes)
@@ -48,7 +48,7 @@ func (m *LoginRequest) Unmarshal(data []byte) error {
 
 // ---------- MoveRequest ----------
 
-// MoveRequest represents a movement command.
+// MoveRequest 表示移动指令。
 type MoveRequest struct {
 	X float32 `json:"x"`
 	Y float32 `json:"y"`
@@ -75,7 +75,7 @@ func (m *MoveRequest) Unmarshal(data []byte) error {
 
 // ---------- SkillCastRequest ----------
 
-// SkillCastRequest represents a skill cast command.
+// SkillCastRequest 表示技能释放指令。
 type SkillCastRequest struct {
 	SkillID  uint32  `json:"skill_id"`
 	TargetID uint64  `json:"target_id"`
@@ -108,7 +108,7 @@ func (m *SkillCastRequest) Unmarshal(data []byte) error {
 
 // ---------- ChatMessage ----------
 
-// ChatMessage represents a chat message.
+// ChatMessage 表示聊天消息。
 type ChatMessage struct {
 	SenderID uint64 `json:"sender_id"`
 	Channel  uint8  `json:"channel"`
@@ -117,7 +117,7 @@ type ChatMessage struct {
 
 func (m *ChatMessage) Marshal() ([]byte, error) {
 	contentBytes := []byte(m.Content)
-	// Format: [8-byte senderID][1-byte channel][4-byte content length][content bytes]
+	// 格式：[8字节发送者ID][1字节频道][4字节内容长度][内容字节]
 	buf := make([]byte, 8+1+4+len(contentBytes))
 	binary.BigEndian.PutUint64(buf[0:8], m.SenderID)
 	buf[8] = m.Channel
@@ -140,9 +140,9 @@ func (m *ChatMessage) Unmarshal(data []byte) error {
 	return nil
 }
 
-// ---------- Default Registry ----------
+// ---------- 默认注册表 ----------
 
-// NewDefaultRegistry creates a MessageRegistry pre-populated with all core message types.
+// NewDefaultRegistry 创建预填充了所有核心消息类型的 MessageRegistry。
 func NewDefaultRegistry() *MessageRegistry {
 	r := NewMessageRegistry()
 	r.Register(MsgIDLoginRequest, "LoginRequest", func() Serializable { return &LoginRequest{} })
@@ -152,26 +152,19 @@ func NewDefaultRegistry() *MessageRegistry {
 	return r
 }
 
-// ---------- JSON helpers for Serializable ----------
+// ---------- Serializable 的 JSON 辅助工具 ----------
 
-// jsonSerializable is a helper that wraps a Serializable for JSON codec.
-// The JSON codec uses json.Marshal/Unmarshal directly on the struct,
-// so the Serializable.Marshal/Unmarshal methods are not used for JSON encoding.
-// This is by design: JSON codec uses encoding/json, binary codec uses Serializable.
+// JSON 编解码器直接对结构体使用 json.Marshal/Unmarshal，
+// 因此 Serializable.Marshal/Unmarshal 方法不用于 JSON 编码。
+// 这是设计上的选择：JSON 编解码器使用 encoding/json，二进制编解码器使用 Serializable。
 
-// MarshalJSON implements json.Marshaler for LoginRequest (already handled by struct tags).
-// No custom implementation needed since we use struct tags.
-
-// UnmarshalJSON for LoginRequest (already handled by struct tags).
-// No custom implementation needed since we use struct tags.
-
-// jsonWrapper is used internally to carry the message type name in JSON format output.
+// jsonWrapper 在 JSON 格式输出中携带消息类型名称。
 type jsonWrapper struct {
 	MsgType string      `json:"msg_type"`
 	Data    interface{} `json:"data"`
 }
 
-// FormatJSON returns a pretty-printed JSON representation of a message.
+// FormatJSON 返回消息的格式化 JSON 表示。
 func FormatJSON(registry *MessageRegistry, msg Message) string {
 	name := registry.Name(msg.ID)
 	if msg.Body == nil {

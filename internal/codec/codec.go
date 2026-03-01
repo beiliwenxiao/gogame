@@ -1,6 +1,6 @@
-// Package codec provides message encoding/decoding for the MMRPG game engine.
-// It supports both binary (Protobuf-style) and JSON formats, with packet framing
-// using the format: [4-byte length (big-endian)][2-byte msgID (big-endian)][body].
+// Package codec 为 MMRPG 游戏引擎提供消息编解码功能。
+// 支持二进制（Protobuf 风格）和 JSON 两种格式，数据包帧格式为：
+// [4字节长度（大端序）][2字节消息ID（大端序）][消息体]。
 package codec
 
 import (
@@ -12,35 +12,35 @@ import (
 	"sync"
 )
 
-// Serializable defines the interface that all message bodies must implement.
+// Serializable 定义了所有消息体必须实现的接口。
 type Serializable interface {
 	Marshal() ([]byte, error)
 	Unmarshal([]byte) error
 }
 
-// Message represents a network message with a type ID and body.
+// Message 表示一条带有类型 ID 和消息体的网络消息。
 type Message struct {
 	ID   uint16
 	Body Serializable
 }
 
-// CodecType identifies the encoding format.
+// CodecType 标识编码格式。
 type CodecType int
 
 const (
-	// CodecProtobuf uses binary encoding (encoding/binary for wire format).
+	// CodecProtobuf 使用二进制编码（encoding/binary 线格式）。
 	CodecProtobuf CodecType = iota
-	// CodecJSON uses JSON text encoding.
+	// CodecJSON 使用 JSON 文本编码。
 	CodecJSON
 )
 
-// PacketHeaderSize is the total header size: 4 bytes length + 2 bytes msgID.
+// PacketHeaderSize 是数据包头部总大小：4字节长度 + 2字节消息ID。
 const PacketHeaderSize = 6
 
-// MaxPacketBodySize is the maximum allowed message body size (1 MB).
+// MaxPacketBodySize 是消息体允许的最大大小（1 MB）。
 const MaxPacketBodySize = 1 << 20
 
-// Errors returned by the codec.
+// codec 返回的错误。
 var (
 	ErrUnknownMessageID  = errors.New("codec: unknown message ID")
 	ErrBodyNil           = errors.New("codec: message body is nil")
@@ -50,17 +50,17 @@ var (
 	ErrIncompletePacket  = errors.New("codec: incomplete packet data")
 )
 
-// MessageFactory is a function that creates a new zero-value Serializable for a given message type.
+// MessageFactory 是为给定消息类型创建新零值 Serializable 的函数。
 type MessageFactory func() Serializable
 
-// MessageRegistry manages the mapping between message IDs and their factory functions.
+// MessageRegistry 管理消息 ID 与工厂函数之间的映射。
 type MessageRegistry struct {
 	mu        sync.RWMutex
 	factories map[uint16]MessageFactory
 	names     map[uint16]string
 }
 
-// NewMessageRegistry creates a new empty MessageRegistry.
+// NewMessageRegistry 创建一个新的空 MessageRegistry。
 func NewMessageRegistry() *MessageRegistry {
 	return &MessageRegistry{
 		factories: make(map[uint16]MessageFactory),
@@ -68,7 +68,7 @@ func NewMessageRegistry() *MessageRegistry {
 	}
 }
 
-// Register associates a message ID with a factory function and a human-readable name.
+// Register 将消息 ID 与工厂函数及可读名称关联。
 func (r *MessageRegistry) Register(id uint16, name string, factory MessageFactory) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -76,7 +76,7 @@ func (r *MessageRegistry) Register(id uint16, name string, factory MessageFactor
 	r.names[id] = name
 }
 
-// Create returns a new zero-value Serializable for the given message ID.
+// Create 为给定消息 ID 返回一个新的零值 Serializable。
 func (r *MessageRegistry) Create(id uint16) (Serializable, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -87,7 +87,7 @@ func (r *MessageRegistry) Create(id uint16) (Serializable, error) {
 	return f(), nil
 }
 
-// Name returns the human-readable name for a message ID.
+// Name 返回消息 ID 对应的可读名称。
 func (r *MessageRegistry) Name(id uint16) string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -97,28 +97,28 @@ func (r *MessageRegistry) Name(id uint16) string {
 	return fmt.Sprintf("Unknown(0x%04X)", id)
 }
 
-// ---------- MessageCodec interface ----------
+// ---------- MessageCodec 接口 ----------
 
-// MessageCodec encodes and decodes Message objects.
+// MessageCodec 对 Message 对象进行编解码。
 type MessageCodec interface {
 	Encode(msg Message) ([]byte, error)
 	Decode(data []byte) (Message, error)
 	Format(msg Message) string
 }
 
-// ---------- ProtobufCodec (binary) ----------
+// ---------- ProtobufCodec（二进制） ----------
 
-// ProtobufCodec encodes/decodes messages using binary serialization.
+// ProtobufCodec 使用二进制序列化对消息进行编解码。
 type ProtobufCodec struct {
 	registry *MessageRegistry
 }
 
-// NewProtobufCodec creates a ProtobufCodec backed by the given registry.
+// NewProtobufCodec 创建一个由给定注册表支持的 ProtobufCodec。
 func NewProtobufCodec(registry *MessageRegistry) *ProtobufCodec {
 	return &ProtobufCodec{registry: registry}
 }
 
-// Encode serializes a Message into bytes: the body is marshalled via Serializable.Marshal().
+// Encode 通过 Serializable.Marshal() 将 Message 序列化为字节。
 func (c *ProtobufCodec) Encode(msg Message) ([]byte, error) {
 	if msg.Body == nil {
 		return nil, ErrBodyNil
@@ -130,14 +130,13 @@ func (c *ProtobufCodec) Encode(msg Message) ([]byte, error) {
 	return body, nil
 }
 
-// Decode deserializes bytes into a Message using the registry to create the body.
+// Decode 将字节反序列化为 Message，使用注册表创建消息体。
+// 此方法在数据包帧提取出 msgID 后由调用方使用。
 func (c *ProtobufCodec) Decode(data []byte) (Message, error) {
-	// data here is just the body bytes; the caller must provide the msgID separately
-	// This method is used after packet framing has extracted the msgID.
 	return Message{}, fmt.Errorf("codec: ProtobufCodec.Decode requires msgID; use DecodeWithID")
 }
 
-// DecodeWithID deserializes bytes into a Message given the message ID.
+// DecodeWithID 根据消息 ID 将字节反序列化为 Message。
 func (c *ProtobufCodec) DecodeWithID(id uint16, data []byte) (Message, error) {
 	body, err := c.registry.Create(id)
 	if err != nil {
@@ -149,7 +148,7 @@ func (c *ProtobufCodec) DecodeWithID(id uint16, data []byte) (Message, error) {
 	return Message{ID: id, Body: body}, nil
 }
 
-// Format returns a human-readable representation of the message.
+// Format 返回消息的可读表示。
 func (c *ProtobufCodec) Format(msg Message) string {
 	name := c.registry.Name(msg.ID)
 	if msg.Body == nil {
@@ -164,17 +163,17 @@ func (c *ProtobufCodec) Format(msg Message) string {
 
 // ---------- JSONCodec ----------
 
-// JSONCodec encodes/decodes messages using JSON serialization.
+// JSONCodec 使用 JSON 序列化对消息进行编解码。
 type JSONCodec struct {
 	registry *MessageRegistry
 }
 
-// NewJSONCodec creates a JSONCodec backed by the given registry.
+// NewJSONCodec 创建一个由给定注册表支持的 JSONCodec。
 func NewJSONCodec(registry *MessageRegistry) *JSONCodec {
 	return &JSONCodec{registry: registry}
 }
 
-// Encode serializes a Message body to JSON bytes.
+// Encode 将 Message 消息体序列化为 JSON 字节。
 func (c *JSONCodec) Encode(msg Message) ([]byte, error) {
 	if msg.Body == nil {
 		return nil, ErrBodyNil
@@ -186,12 +185,12 @@ func (c *JSONCodec) Encode(msg Message) ([]byte, error) {
 	return body, nil
 }
 
-// Decode is not used directly; use DecodeWithID after packet framing.
+// Decode 不直接使用；数据包帧处理后请使用 DecodeWithID。
 func (c *JSONCodec) Decode(data []byte) (Message, error) {
 	return Message{}, fmt.Errorf("codec: JSONCodec.Decode requires msgID; use DecodeWithID")
 }
 
-// DecodeWithID deserializes JSON bytes into a Message given the message ID.
+// DecodeWithID 根据消息 ID 将 JSON 字节反序列化为 Message。
 func (c *JSONCodec) DecodeWithID(id uint16, data []byte) (Message, error) {
 	body, err := c.registry.Create(id)
 	if err != nil {
@@ -203,7 +202,7 @@ func (c *JSONCodec) DecodeWithID(id uint16, data []byte) (Message, error) {
 	return Message{ID: id, Body: body}, nil
 }
 
-// Format returns a human-readable representation of the message.
+// Format 返回消息的可读表示。
 func (c *JSONCodec) Format(msg Message) string {
 	name := c.registry.Name(msg.ID)
 	if msg.Body == nil {
@@ -216,9 +215,9 @@ func (c *JSONCodec) Format(msg Message) string {
 	return fmt.Sprintf("[%s](ID=0x%04X) %s", name, msg.ID, string(body))
 }
 
-// ---------- Codec (unified) ----------
+// ---------- Codec（统一接口） ----------
 
-// Codec wraps a MessageCodec with DecodeWithID support.
+// Codec 封装了支持 DecodeWithID 的 MessageCodec。
 type Codec interface {
 	Encode(msg Message) ([]byte, error)
 	DecodeWithID(id uint16, data []byte) (Message, error)
@@ -227,19 +226,19 @@ type Codec interface {
 
 // ---------- PacketWriter ----------
 
-// PacketWriter frames a Message into the wire format:
-// [4-byte body+2 length (big-endian)][2-byte msgID (big-endian)][body]
-// The 4-byte length field stores the size of (2-byte msgID + body).
+// PacketWriter 将 Message 封装为线格式：
+// [4字节 body+2 长度（大端序）][2字节消息ID（大端序）][消息体]
+// 4字节长度字段存储（2字节消息ID + 消息体）的大小。
 type PacketWriter struct {
 	codec Codec
 }
 
-// NewPacketWriter creates a PacketWriter using the given Codec.
+// NewPacketWriter 使用给定 Codec 创建 PacketWriter。
 func NewPacketWriter(codec Codec) *PacketWriter {
 	return &PacketWriter{codec: codec}
 }
 
-// WritePacket encodes a Message and frames it into a complete packet.
+// WritePacket 对 Message 进行编码并封装为完整数据包。
 func (pw *PacketWriter) WritePacket(msg Message) ([]byte, error) {
 	body, err := pw.codec.Encode(msg)
 	if err != nil {
@@ -248,7 +247,7 @@ func (pw *PacketWriter) WritePacket(msg Message) ([]byte, error) {
 	if len(body) > MaxPacketBodySize {
 		return nil, ErrPacketTooLarge
 	}
-	// length = 2 (msgID) + len(body)
+	// length = 2（消息ID）+ len(body)
 	payloadLen := 2 + len(body)
 	pkt := make([]byte, 4+payloadLen)
 	binary.BigEndian.PutUint32(pkt[0:4], uint32(payloadLen))
@@ -259,33 +258,33 @@ func (pw *PacketWriter) WritePacket(msg Message) ([]byte, error) {
 
 // ---------- PacketReader ----------
 
-// PacketReader reads complete packets from a byte stream buffer.
+// PacketReader 从字节流缓冲区中读取完整数据包。
 type PacketReader struct {
 	codec Codec
 	buf   []byte
 }
 
-// NewPacketReader creates a PacketReader using the given Codec.
+// NewPacketReader 使用给定 Codec 创建 PacketReader。
 func NewPacketReader(codec Codec) *PacketReader {
 	return &PacketReader{codec: codec}
 }
 
-// Append adds raw bytes to the internal buffer.
+// Append 将原始字节追加到内部缓冲区。
 func (pr *PacketReader) Append(data []byte) {
 	pr.buf = append(pr.buf, data...)
 }
 
-// ReadPacket attempts to extract one complete packet from the buffer.
-// Returns io.ErrUnexpectedEOF if not enough data is available yet.
-// Returns an error with client info wrapper for invalid packets.
+// ReadPacket 尝试从缓冲区中提取一个完整数据包。
+// 若数据不足则返回 io.ErrUnexpectedEOF。
+// 无效数据包返回带客户端信息的错误。
 func (pr *PacketReader) ReadPacket() (Message, error) {
 	if len(pr.buf) < 4 {
 		return Message{}, io.ErrUnexpectedEOF
 	}
 	payloadLen := int(binary.BigEndian.Uint32(pr.buf[0:4]))
 	if payloadLen < 2 {
-		// Invalid: payload must contain at least the 2-byte msgID.
-		pr.buf = pr.buf[4:] // discard the bad length header
+		// 无效：payload 至少需要包含 2 字节消息ID。
+		pr.buf = pr.buf[4:] // 丢弃错误的长度头
 		return Message{}, ErrInvalidPacketLen
 	}
 	if payloadLen-2 > MaxPacketBodySize {
@@ -300,7 +299,7 @@ func (pr *PacketReader) ReadPacket() (Message, error) {
 	body := pr.buf[6:totalLen]
 
 	msg, err := pr.codec.DecodeWithID(msgID, body)
-	// Consume the packet from the buffer regardless of decode success.
+	// 无论解码是否成功，都从缓冲区消费该数据包。
 	pr.buf = pr.buf[totalLen:]
 	if err != nil {
 		return Message{}, err
@@ -308,7 +307,7 @@ func (pr *PacketReader) ReadPacket() (Message, error) {
 	return msg, nil
 }
 
-// ReadAllPackets extracts all complete packets currently in the buffer.
+// ReadAllPackets 提取缓冲区中所有完整数据包。
 func (pr *PacketReader) ReadAllPackets() ([]Message, []error) {
 	var msgs []Message
 	var errs []error
@@ -326,14 +325,14 @@ func (pr *PacketReader) ReadAllPackets() ([]Message, []error) {
 	return msgs, errs
 }
 
-// Buffered returns the number of unprocessed bytes in the buffer.
+// Buffered 返回缓冲区中未处理的字节数。
 func (pr *PacketReader) Buffered() int {
 	return len(pr.buf)
 }
 
 // ---------- InvalidMessageError ----------
 
-// InvalidMessageError wraps a decode error with client identification info.
+// InvalidMessageError 将解码错误与客户端标识信息封装在一起。
 type InvalidMessageError struct {
 	ClientID string
 	Err      error
@@ -347,7 +346,7 @@ func (e *InvalidMessageError) Unwrap() error {
 	return e.Err
 }
 
-// WrapWithClientID wraps an error with client identification for logging.
+// WrapWithClientID 将错误与客户端标识封装，用于日志记录。
 func WrapWithClientID(clientID string, err error) error {
 	if err == nil {
 		return nil

@@ -1,5 +1,5 @@
-// Package network provides the unified network layer for the MMRPG game engine,
-// supporting both TCP and WebSocket transports behind a common Session interface.
+// Package network 为 MMRPG 游戏引擎提供统一的网络层，
+// 通过公共 Session 接口支持 TCP 和 WebSocket 两种传输协议。
 package network
 
 import (
@@ -19,9 +19,9 @@ import (
 	"gfgame/internal/engine"
 )
 
-// ---------- Session interface & implementations ----------
+// ---------- Session 接口及实现 ----------
 
-// Session is the unified session abstraction that hides TCP/WebSocket differences.
+// Session 是统一的会话抽象，屏蔽了 TCP/WebSocket 的差异。
 type Session interface {
 	ID() string
 	Send(msg []byte) error
@@ -30,7 +30,7 @@ type Session interface {
 	Protocol() engine.TransportProtocol
 }
 
-// ---------- TCP Session ----------
+// ---------- TCP 会话 ----------
 
 type tcpSession struct {
 	id       string
@@ -64,12 +64,12 @@ func (s *tcpSession) Send(msg []byte) error {
 
 func (s *tcpSession) Close() error {
 	if s.closed.Swap(true) {
-		return nil // already closed
+		return nil // 已关闭
 	}
 	return s.conn.Close()
 }
 
-// ---------- WebSocket Session ----------
+// ---------- WebSocket 会话 ----------
 
 type wsSession struct {
 	id       string
@@ -107,9 +107,9 @@ func (s *wsSession) Close() error {
 	return s.conn.Close()
 }
 
-// ---------- NetworkLayer interface ----------
+// ---------- NetworkLayer 接口 ----------
 
-// NetworkLayer is the top-level network abstraction.
+// NetworkLayer 是顶层网络抽象。
 type NetworkLayer interface {
 	Start() error
 	Stop() error
@@ -121,7 +121,7 @@ type NetworkLayer interface {
 
 // ---------- NetworkConfig ----------
 
-// NetworkConfig holds all network-related configuration.
+// NetworkConfig 保存所有网络相关配置。
 type NetworkConfig struct {
 	TCPAddr           string
 	WSAddr            string
@@ -130,10 +130,10 @@ type NetworkConfig struct {
 	TLSKeyFile        string
 	HeartbeatInterval time.Duration
 	HeartbeatTimeout  time.Duration
-	MaxConnections    int // default 5000
+	MaxConnections    int // 默认 5000
 }
 
-// DefaultNetworkConfig returns a NetworkConfig with sensible defaults.
+// DefaultNetworkConfig 返回带有合理默认值的 NetworkConfig。
 func DefaultNetworkConfig() NetworkConfig {
 	return NetworkConfig{
 		TCPAddr:           ":9000",
@@ -144,17 +144,17 @@ func DefaultNetworkConfig() NetworkConfig {
 	}
 }
 
-// ---------- networkLayer implementation ----------
+// ---------- networkLayer 实现 ----------
 
 type networkLayer struct {
 	config NetworkConfig
 
-	// callbacks
+	// 回调函数
 	onConnect    func(Session)
 	onDisconnect func(Session)
 	onMessage    func(Session, []byte)
 
-	// session tracking
+	// 会话跟踪
 	sessions sync.Map // map[string]Session
 	connCount atomic.Int64
 
@@ -165,12 +165,12 @@ type networkLayer struct {
 	wsHTTPServer *http.Server
 	wsUpgrader   websocket.Upgrader
 
-	// lifecycle
+	// 生命周期
 	stopCh chan struct{}
 	wg     sync.WaitGroup
 }
 
-// New creates a new NetworkLayer with the given config.
+// New 使用给定配置创建一个新的 NetworkLayer。
 func New(config NetworkConfig) NetworkLayer {
 	if config.MaxConnections <= 0 {
 		config.MaxConnections = 5000
@@ -197,9 +197,9 @@ func (nl *networkLayer) OnDisconnect(handler func(Session))           { nl.onDis
 func (nl *networkLayer) OnMessage(handler func(Session, []byte))      { nl.onMessage = handler }
 func (nl *networkLayer) ConnectionCount() int                         { return int(nl.connCount.Load()) }
 
-// Start begins listening on both TCP and WebSocket endpoints.
+// Start 开始在 TCP 和 WebSocket 端点上监听。
 func (nl *networkLayer) Start() error {
-	// Start TCP listener
+	// 启动 TCP 监听
 	if nl.config.TCPAddr != "" {
 		ln, err := net.Listen("tcp", nl.config.TCPAddr)
 		if err != nil {
@@ -210,7 +210,7 @@ func (nl *networkLayer) Start() error {
 		go nl.acceptTCP()
 	}
 
-	// Start WebSocket listener
+	// 启动 WebSocket 监听
 	if nl.config.WSAddr != "" {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/ws", nl.handleWS)
@@ -227,7 +227,7 @@ func (nl *networkLayer) Start() error {
 	return nil
 }
 
-// Stop gracefully shuts down all listeners and closes all sessions.
+// Stop 优雅地关闭所有监听器并关闭所有会话。
 func (nl *networkLayer) Stop() error {
 	close(nl.stopCh)
 
@@ -238,7 +238,7 @@ func (nl *networkLayer) Stop() error {
 		nl.wsHTTPServer.Close()
 	}
 
-	// Close all active sessions
+	// 关闭所有活跃会话
 	nl.sessions.Range(func(key, value any) bool {
 		if sess, ok := value.(Session); ok {
 			sess.Close()
@@ -250,7 +250,7 @@ func (nl *networkLayer) Stop() error {
 	return nil
 }
 
-// ---------- TCP handling ----------
+// ---------- TCP 处理 ----------
 
 func (nl *networkLayer) acceptTCP() {
 	defer nl.wg.Done()
@@ -266,7 +266,7 @@ func (nl *networkLayer) acceptTCP() {
 			}
 		}
 
-		// Check max connections
+		// 检查最大连接数
 		if int(nl.connCount.Load()) >= nl.config.MaxConnections {
 			log.Printf("[network] max connections reached (%d), rejecting TCP connection from %s",
 				nl.config.MaxConnections, conn.RemoteAddr())
@@ -292,7 +292,7 @@ func (nl *networkLayer) handleTCPSession(sess *tcpSession) {
 
 	buf := make([]byte, 4096)
 	for {
-		// Set read deadline for heartbeat/disconnect detection
+		// 设置读取超时用于心跳/断线检测
 		deadline := nl.config.HeartbeatTimeout
 		if deadline <= 0 {
 			deadline = 45 * time.Second
@@ -312,9 +312,9 @@ func (nl *networkLayer) handleTCPSession(sess *tcpSession) {
 		}
 
 		if n > 0 {
-			// Check for TCP heartbeat (single byte 0x00)
+			// 检测 TCP 心跳（单字节 0x00）
 			if n == 1 && buf[0] == 0x00 {
-				// Heartbeat ping — respond with pong
+				// 心跳 ping — 回复 pong
 				sess.Send([]byte{0x00})
 				continue
 			}
@@ -328,7 +328,7 @@ func (nl *networkLayer) handleTCPSession(sess *tcpSession) {
 	}
 }
 
-// ---------- WebSocket handling ----------
+// ---------- WebSocket 处理 ----------
 
 func (nl *networkLayer) serveWS() {
 	defer nl.wg.Done()
@@ -354,7 +354,7 @@ func (nl *networkLayer) serveWS() {
 }
 
 func (nl *networkLayer) handleWS(w http.ResponseWriter, r *http.Request) {
-	// Check max connections
+	// 检查最大连接数
 	if int(nl.connCount.Load()) >= nl.config.MaxConnections {
 		log.Printf("[network] max connections reached (%d), rejecting WS connection from %s",
 			nl.config.MaxConnections, r.RemoteAddr)
@@ -371,7 +371,7 @@ func (nl *networkLayer) handleWS(w http.ResponseWriter, r *http.Request) {
 	sess := newWSSession(conn)
 	nl.addSession(sess)
 
-	// Configure WebSocket heartbeat (ping/pong)
+	// 配置 WebSocket 心跳（ping/pong）
 	conn.SetReadDeadline(time.Now().Add(nl.config.HeartbeatTimeout))
 	conn.SetPongHandler(func(string) error {
 		conn.SetReadDeadline(time.Now().Add(nl.config.HeartbeatTimeout))
@@ -382,11 +382,11 @@ func (nl *networkLayer) handleWS(w http.ResponseWriter, r *http.Request) {
 		nl.onConnect(sess)
 	}
 
-	// Start ping ticker goroutine
+	// 启动 ping 定时器协程
 	nl.wg.Add(1)
 	go nl.wsPingLoop(sess)
 
-	// Read loop
+	// 读取循环
 	nl.wsReadLoop(sess)
 }
 
@@ -442,7 +442,7 @@ func (nl *networkLayer) wsReadLoop(sess *wsSession) {
 	}
 }
 
-// ---------- Session management ----------
+// ---------- 会话管理 ----------
 
 func (nl *networkLayer) addSession(sess Session) {
 	nl.sessions.Store(sess.ID(), sess)
@@ -451,7 +451,7 @@ func (nl *networkLayer) addSession(sess Session) {
 
 func (nl *networkLayer) removeSession(sess Session) {
 	if _, loaded := nl.sessions.LoadAndDelete(sess.ID()); !loaded {
-		return // already removed
+		return // 已移除
 	}
 	nl.connCount.Add(-1)
 	sess.Close()

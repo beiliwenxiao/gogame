@@ -1,5 +1,4 @@
-// Package engine provides the Engine main entry point that assembles and
-// wires all subsystems of the MMRPG game engine.
+// Package engine 提供引擎主入口，负责组装和连接 MMRPG 游戏引擎的所有子系统。
 package engine
 
 import (
@@ -7,32 +6,32 @@ import (
 	"sync"
 )
 
-// ModuleSet holds references to all engine subsystems.
-// Each field is an interface so modules can be swapped for testing.
+// ModuleSet 保存所有引擎子系统的引用。
+// 每个字段均为接口类型，便于在测试中替换模块。
 type ModuleSet struct {
-	// Core infrastructure
+	// 核心基础设施
 	Config      interface{ Validate() error }
 	Logger      interface{ Info(msg string) }
 	Persistence interface{ Flush() error }
 
-	// Network
+	// 网络层
 	Network interface {
 		Start() error
 		Stop() error
 		OnMessage(handler func(session interface{}, data []byte))
 	}
 
-	// Game loop
+	// 游戏循环
 	Loop GameLoop
 
-	// Optional: plugin manager (duck-typed to avoid import cycle)
+	// 可选：插件管理器（鸭子类型，避免循环导入）
 	Plugins interface {
 		LoadAll(bus interface{}) error
 		StopAll() error
 	}
 }
 
-// Engine is the top-level coordinator that manages the lifecycle of all modules.
+// Engine 是顶层协调器，管理所有模块的生命周期。
 type Engine struct {
 	mu      sync.Mutex
 	modules ModuleSet
@@ -41,14 +40,13 @@ type Engine struct {
 	stopCh  chan struct{}
 }
 
-// EngineConfig holds configuration for the Engine.
+// EngineConfig 保存引擎配置。
 type EngineConfig struct {
-	TickRate int // default 20
+	TickRate int // 默认 20
 }
 
-// NewEngine creates an Engine with the given GameLoop and optional modules.
-// Modules are wired in dependency order: Config → Logger → Persistence →
-// Network → Loop → Plugins.
+// NewEngine 使用给定的 GameLoop 和可选模块创建引擎。
+// 模块按依赖顺序连接：Config → Logger → Persistence → Network → Loop → Plugins。
 func NewEngine(cfg EngineConfig, loop GameLoop) *Engine {
 	if cfg.TickRate <= 0 {
 		cfg.TickRate = 20
@@ -59,20 +57,20 @@ func NewEngine(cfg EngineConfig, loop GameLoop) *Engine {
 	}
 }
 
-// Start initialises all modules and begins the game loop.
-// Initialisation order: Config → Logger → Persistence → Network → Loop → Plugins.
+// Start 初始化所有模块并启动游戏循环。
+// 初始化顺序：Config → Logger → Persistence → Network → Loop → Plugins。
 func (e *Engine) Start() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
 	if e.running {
-		return fmt.Errorf("engine already running")
+		return fmt.Errorf("引擎已在运行中")
 	}
 
-	// Start the game loop.
+	// 启动游戏循环。
 	if e.loop != nil {
 		if err := e.loop.Start(); err != nil {
-			return fmt.Errorf("game loop start: %w", err)
+			return fmt.Errorf("游戏循环启动失败：%w", err)
 		}
 	}
 
@@ -80,19 +78,19 @@ func (e *Engine) Start() error {
 	return nil
 }
 
-// Stop gracefully shuts down all modules in reverse order.
-// Order: Plugins → Loop → Network → Persistence → Logger → Config.
+// Stop 按逆序优雅关闭所有模块。
+// 顺序：Plugins → Loop → Network → Persistence → Logger → Config。
 func (e *Engine) Stop() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
 	if !e.running {
-		return fmt.Errorf("engine not running")
+		return fmt.Errorf("引擎未在运行中")
 	}
 
 	var firstErr error
 
-	// Stop game loop.
+	// 停止游戏循环。
 	if e.loop != nil {
 		if err := e.loop.Stop(); err != nil && firstErr == nil {
 			firstErr = err
@@ -103,37 +101,35 @@ func (e *Engine) Stop() error {
 	return firstErr
 }
 
-// IsRunning returns true if the engine is currently running.
+// IsRunning 返回引擎当前是否正在运行。
 func (e *Engine) IsRunning() bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.running
 }
 
-// RegisterInputHandler wires a message handler from the network layer into
-// the GameLoop's input phase.
+// RegisterInputHandler 将网络层的消息处理器接入 GameLoop 的输入阶段。
 func (e *Engine) RegisterInputHandler(handler TickHandler) {
 	if e.loop != nil {
 		e.loop.RegisterPhase(PhaseInput, handler)
 	}
 }
 
-// RegisterUpdateHandler wires a system update handler into the GameLoop's
-// update phase.
+// RegisterUpdateHandler 将系统更新处理器接入 GameLoop 的更新阶段。
 func (e *Engine) RegisterUpdateHandler(handler TickHandler) {
 	if e.loop != nil {
 		e.loop.RegisterPhase(PhaseUpdate, handler)
 	}
 }
 
-// RegisterSyncHandler wires a sync handler into the GameLoop's sync phase.
+// RegisterSyncHandler 将同步处理器接入 GameLoop 的同步阶段。
 func (e *Engine) RegisterSyncHandler(handler TickHandler) {
 	if e.loop != nil {
 		e.loop.RegisterPhase(PhaseSync, handler)
 	}
 }
 
-// RegisterCleanupHandler wires a cleanup handler into the GameLoop's cleanup phase.
+// RegisterCleanupHandler 将清理处理器接入 GameLoop 的清理阶段。
 func (e *Engine) RegisterCleanupHandler(handler TickHandler) {
 	if e.loop != nil {
 		e.loop.RegisterPhase(PhaseCleanup, handler)

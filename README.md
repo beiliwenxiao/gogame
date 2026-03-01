@@ -5,34 +5,89 @@ gfgame 是基于 GoFrame 框架构建的 MMRPG 游戏后端引擎。引擎采用
 引擎是纯后端服务。前端（如 html5-mmrpg-game）通过 WebSocket/TCP 协议与引擎通信，完全解耦。
 
 #### 软件架构
-软件架构说明
 
+```
+gfgame/
+├── internal/
+│   ├── config/       # 配置管理（ConfigManager）
+│   ├── monitor/      # 性能监控 & WorkerPool 并行计算
+│   ├── persistence/  # 持久化管理（PersistenceManager）
+│   ├── engine/       # 引擎核心：GameLoop、ObjectPool、ECS 类型定义
+│   ├── ecs/          # ECS 实体管理（EntityManager）
+│   ├── network/      # 网络层：WebSocket/TCP 连接管理
+│   ├── codec/        # 消息编解码：JSON + Compact 二进制协议
+│   ├── sync/         # 同步系统：帧同步（LockstepSyncer）& 状态同步（StateSyncer）
+│   ├── aoi/          # AOI 兴趣区域：空间索引（SpatialIndex）& 跨边界管理
+│   ├── scene/        # 场景管理：多场景切换 & 无缝过渡
+│   ├── map/          # 地图系统：MapManager、A* 寻路、高度图遮挡
+│   ├── room/         # 房间管理：RoomManager & 实体迁移
+│   ├── equipment/    # 装备系统：装备槽、属性加成
+│   ├── combat/       # 战斗系统：伤害计算、装备锁定、数据缓存
+│   └── plugin/       # 插件系统 & EventBus 事件总线
+├── proto/
+│   └── protocol.md   # 通信协议文档
+├── sdk/
+│   └── client.ts     # TypeScript 客户端 SDK
+├── go.mod
+└── go.sum
+```
+
+主要依赖：
+- [GoFrame v2](https://github.com/gogf/gf) — 基础框架
+- [gorilla/websocket](https://github.com/gorilla/websocket) — WebSocket 支持
+- [google/uuid](https://github.com/google/uuid) — 实体 ID 生成
 
 #### 安装教程
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+1. 确保已安装 Go 1.21+（本项目使用 go 1.25.0）
+2. 克隆仓库后，在项目根目录执行依赖下载：
+   ```bash
+   go mod download
+   ```
+3. 运行所有单元测试，验证环境正常：
+   ```bash
+   go test ./internal/... -count=1
+   ```
 
 #### 使用说明
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+1. 创建并启动引擎实例：
+   ```go
+   import "gfgame/internal/engine"
+
+   eng := engine.NewEngine(engine.Config{
+       TickRate: 20, // 每秒 tick 次数
+   })
+   eng.Start()
+   defer eng.Stop()
+   ```
+
+2. 注册消息处理器（通过 NetworkLayer）：
+   ```go
+   import "gfgame/internal/network"
+
+   nl := network.NewNetworkLayer(network.Config{
+       Address: ":8080",
+       Mode:    network.ModeWebSocket,
+   })
+   nl.RegisterHandler(codec.MsgTypeMove, handleMove)
+   nl.Start()
+   ```
+
+3. 使用插件系统扩展功能：
+   ```go
+   import "gfgame/internal/plugin"
+
+   pm := plugin.NewPluginManager()
+   pm.Register(myPlugin)
+   pm.Start()
+   ```
+
+4. 前端通过 WebSocket 接入，协议格式参见 `proto/protocol.md`，TypeScript SDK 位于 `sdk/client.ts`。
 
 #### 参与贡献
 
-1.  Fork 本仓库
-2.  新建 Feat_xxx 分支
-3.  提交代码
-4.  新建 Pull Request
-
-
-#### 特技
-
-1.  使用 Readme\_XXX.md 来支持不同的语言，例如 Readme\_en.md, Readme\_zh.md
-2.  Gitee 官方博客 [blog.gitee.com](https://blog.gitee.com)
-3.  你可以 [https://gitee.com/explore](https://gitee.com/explore) 这个地址来了解 Gitee 上的优秀开源项目
-4.  [GVP](https://gitee.com/gvp) 全称是 Gitee 最有价值开源项目，是综合评定出的优秀开源项目
-5.  Gitee 官方提供的使用手册 [https://gitee.com/help](https://gitee.com/help)
-6.  Gitee 封面人物是一档用来展示 Gitee 会员风采的栏目 [https://gitee.com/gitee-stars/](https://gitee.com/gitee-stars/)
+1. Fork 本仓库
+2. 新建 Feat_xxx 分支
+3. 提交代码并确保 `go test ./internal/... -count=1` 全部通过
+4. 新建 Pull Request

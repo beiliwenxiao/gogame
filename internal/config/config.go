@@ -1,6 +1,6 @@
-// Package config provides configuration management for the MMRPG game engine.
-// It supports YAML/JSON/TOML config loading via GoFrame gcfg, game table management,
-// hot reload with file watching, and startup validation.
+// Package config 为 MMRPG 游戏引擎提供配置管理功能。
+// 支持通过 GoFrame gcfg 加载 YAML/JSON/TOML 配置，管理游戏数据表，
+// 支持文件监听热重载，以及启动时配置校验。
 package config
 
 import (
@@ -17,45 +17,44 @@ import (
 	"github.com/gogf/gf/v2/os/gfsnotify"
 )
 
-// ConfigManager manages engine configuration loading, validation, hot reload,
-// and game table access.
+// ConfigManager 管理引擎配置的加载、校验、热重载和游戏数据表访问。
 type ConfigManager interface {
-	// Load reads all configuration files from the configured directory.
+	// Load 从配置目录读取所有配置文件。
 	Load() error
-	// Get returns a configuration value by dot-separated key path.
+	// Get 通过点分隔的键路径返回配置值。
 	Get(key string) interface{}
-	// GetGameTable returns a named game table (e.g. "skills", "monsters", "equipment").
+	// GetGameTable 返回指定名称的游戏数据表（如 "skills"、"monsters"、"equipment"）。
 	GetGameTable(tableName string) (GameTable, error)
-	// HotReload re-reads changed configuration files without stopping the engine.
+	// HotReload 在不停止引擎的情况下重新读取已变更的配置文件。
 	HotReload() error
-	// Validate checks all loaded configuration for format and data integrity.
+	// Validate 检查所有已加载配置的格式和数据完整性。
 	Validate() error
-	// OnChange registers a callback invoked when a config key changes during hot reload.
+	// OnChange 注册一个回调，在热重载时某个配置键发生变化时触发。
 	OnChange(handler func(key string))
 }
 
-// GameTable provides read access to a game data table (skill table, monster table, etc.).
+// GameTable 提供对游戏数据表（技能表、怪物表等）的只读访问。
 type GameTable interface {
-	// GetRow returns a single row by its ID key.
+	// GetRow 通过 ID 键返回单行数据。
 	GetRow(id interface{}) (interface{}, bool)
-	// GetAll returns all rows in the table.
+	// GetAll 返回表中所有行。
 	GetAll() []interface{}
-	// Reload replaces the table data from raw JSON bytes.
+	// Reload 从原始 JSON 字节替换表数据。
 	Reload(data []byte) error
 }
 
 // ---------------------------------------------------------------------------
-// GameTable implementation
+// GameTable 实现
 // ---------------------------------------------------------------------------
 
-// gameTable stores rows keyed by an arbitrary ID.
+// gameTable 以任意 ID 为键存储行数据。
 type gameTable struct {
 	mu   sync.RWMutex
 	name string
 	rows map[interface{}]interface{}
 }
 
-// newGameTable creates an empty game table.
+// newGameTable 创建一个空的游戏数据表。
 func newGameTable(name string) *gameTable {
 	return &gameTable{
 		name: name,
@@ -80,19 +79,18 @@ func (t *gameTable) GetAll() []interface{} {
 	return out
 }
 
-// Reload parses JSON data as an array of objects. Each object must contain an
-// "id" field which is used as the row key.
+// Reload 将 JSON 数据解析为对象数组。每个对象必须包含 "id" 字段作为行键。
 func (t *gameTable) Reload(data []byte) error {
 	var rows []map[string]interface{}
 	if err := json.Unmarshal(data, &rows); err != nil {
-		return fmt.Errorf("game table %q: invalid JSON: %w", t.name, err)
+		return fmt.Errorf("游戏数据表 %q：JSON 格式无效：%w", t.name, err)
 	}
 
 	newRows := make(map[interface{}]interface{}, len(rows))
 	for i, row := range rows {
 		id, ok := row["id"]
 		if !ok {
-			return fmt.Errorf("game table %q: row %d missing 'id' field", t.name, i)
+			return fmt.Errorf("游戏数据表 %q：第 %d 行缺少 'id' 字段", t.name, i)
 		}
 		newRows[id] = row
 	}
@@ -104,46 +102,46 @@ func (t *gameTable) Reload(data []byte) error {
 }
 
 // ---------------------------------------------------------------------------
-// ConfigManager implementation
+// ConfigManager 实现
 // ---------------------------------------------------------------------------
 
-// configManager is the default ConfigManager implementation.
+// configManager 是 ConfigManager 的默认实现。
 type configManager struct {
 	mu sync.RWMutex
 
-	// configDir is the root directory for config files.
+	// configDir 是配置文件的根目录。
 	configDir string
 
-	// gcfg adapter for YAML/JSON/TOML loading.
+	// gcfg 适配器，用于加载 YAML/JSON/TOML。
 	adapter *gcfg.Config
 
-	// tables holds loaded game tables keyed by table name.
+	// tables 存储已加载的游戏数据表，以表名为键。
 	tables map[string]*gameTable
 
-	// tableDir is the directory containing game table JSON files.
+	// tableDir 是存放游戏数据表 JSON 文件的目录。
 	tableDir string
 
-	// changeHandlers are callbacks notified on config changes.
+	// changeHandlers 是配置变更时触发的回调列表。
 	changeHandlers []func(key string)
 
-	// watchCallbacks tracks gfsnotify callbacks for cleanup.
+	// watchCallbacks 记录 gfsnotify 回调，用于清理。
 	watchCallbacks []*gfsnotify.Callback
 }
 
-// Option configures a configManager.
+// Option 用于配置 configManager。
 type Option func(*configManager)
 
-// WithConfigDir sets the root configuration directory (default: "config").
+// WithConfigDir 设置配置根目录（默认："config"）。
 func WithConfigDir(dir string) Option {
 	return func(cm *configManager) { cm.configDir = dir }
 }
 
-// WithTableDir sets the game table directory (default: "config/tables").
+// WithTableDir 设置游戏数据表目录（默认："config/tables"）。
 func WithTableDir(dir string) Option {
 	return func(cm *configManager) { cm.tableDir = dir }
 }
 
-// NewConfigManager creates a new ConfigManager with the given options.
+// NewConfigManager 使用给定选项创建新的 ConfigManager。
 func NewConfigManager(opts ...Option) ConfigManager {
 	cm := &configManager{
 		configDir: "config",
@@ -156,19 +154,19 @@ func NewConfigManager(opts ...Option) ConfigManager {
 	return cm
 }
 
-// Load reads the main config via gcfg and loads all game tables from tableDir.
+// Load 通过 gcfg 读取主配置，并从 tableDir 加载所有游戏数据表。
 func (cm *configManager) Load() error {
-	// Initialize gcfg adapter pointing at configDir.
+	// 初始化 gcfg 适配器，指向 configDir。
 	adapterFile, err := gcfg.NewAdapterFile()
 	if err != nil {
-		return fmt.Errorf("config: failed to create adapter: %w", err)
+		return fmt.Errorf("config：创建适配器失败：%w", err)
 	}
 	if err := adapterFile.SetPath(cm.configDir); err != nil {
-		return fmt.Errorf("config: failed to set config path %q: %w", cm.configDir, err)
+		return fmt.Errorf("config：设置配置路径 %q 失败：%w", cm.configDir, err)
 	}
 	cm.adapter = gcfg.NewWithAdapter(adapterFile)
 
-	// Load game tables from tableDir.
+	// 从 tableDir 加载游戏数据表。
 	if err := cm.loadTables(); err != nil {
 		return err
 	}
@@ -176,23 +174,23 @@ func (cm *configManager) Load() error {
 	return nil
 }
 
-// loadTables scans tableDir for JSON files and loads each as a GameTable.
+// loadTables 扫描 tableDir 中的 JSON 文件，将每个文件加载为 GameTable。
 func (cm *configManager) loadTables() error {
 	info, err := os.Stat(cm.tableDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// No tables directory — that's fine.
+			// 数据表目录不存在，忽略。
 			return nil
 		}
-		return fmt.Errorf("config: cannot stat table dir %q: %w", cm.tableDir, err)
+		return fmt.Errorf("config：无法访问数据表目录 %q：%w", cm.tableDir, err)
 	}
 	if !info.IsDir() {
-		return fmt.Errorf("config: table path %q is not a directory", cm.tableDir)
+		return fmt.Errorf("config：数据表路径 %q 不是目录", cm.tableDir)
 	}
 
 	entries, err := os.ReadDir(cm.tableDir)
 	if err != nil {
-		return fmt.Errorf("config: cannot read table dir %q: %w", cm.tableDir, err)
+		return fmt.Errorf("config：无法读取数据表目录 %q：%w", cm.tableDir, err)
 	}
 
 	cm.mu.Lock()
@@ -209,7 +207,7 @@ func (cm *configManager) loadTables() error {
 		tableName := strings.TrimSuffix(name, ".json")
 		data, err := os.ReadFile(filepath.Join(cm.tableDir, name))
 		if err != nil {
-			return fmt.Errorf("config: cannot read table file %q: %w", name, err)
+			return fmt.Errorf("config：无法读取数据表文件 %q：%w", name, err)
 		}
 		tbl := newGameTable(tableName)
 		if err := tbl.Reload(data); err != nil {
@@ -220,7 +218,7 @@ func (cm *configManager) loadTables() error {
 	return nil
 }
 
-// Get returns a config value by key using the gcfg adapter.
+// Get 通过 gcfg 适配器按键返回配置值。
 func (cm *configManager) Get(key string) interface{} {
 	if cm.adapter == nil {
 		return nil
@@ -233,25 +231,25 @@ func (cm *configManager) Get(key string) interface{} {
 	return v.Val()
 }
 
-// GetGameTable returns a loaded game table by name.
+// GetGameTable 按名称返回已加载的游戏数据表。
 func (cm *configManager) GetGameTable(tableName string) (GameTable, error) {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 	tbl, ok := cm.tables[tableName]
 	if !ok {
-		return nil, fmt.Errorf("config: game table %q not found", tableName)
+		return nil, fmt.Errorf("config：游戏数据表 %q 未找到", tableName)
 	}
 	return tbl, nil
 }
 
-// HotReload re-reads all game table files and notifies change handlers.
+// HotReload 重新读取所有游戏数据表文件并通知变更处理器。
 func (cm *configManager) HotReload() error {
 	info, err := os.Stat(cm.tableDir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
 		}
-		return fmt.Errorf("config: cannot stat table dir %q: %w", cm.tableDir, err)
+		return fmt.Errorf("config：无法访问数据表目录 %q：%w", cm.tableDir, err)
 	}
 	if !info.IsDir() {
 		return nil
@@ -259,7 +257,7 @@ func (cm *configManager) HotReload() error {
 
 	entries, err := os.ReadDir(cm.tableDir)
 	if err != nil {
-		return fmt.Errorf("config: cannot read table dir %q: %w", cm.tableDir, err)
+		return fmt.Errorf("config：无法读取数据表目录 %q：%w", cm.tableDir, err)
 	}
 
 	for _, entry := range entries {
@@ -269,7 +267,7 @@ func (cm *configManager) HotReload() error {
 		tableName := strings.TrimSuffix(entry.Name(), ".json")
 		data, err := os.ReadFile(filepath.Join(cm.tableDir, entry.Name()))
 		if err != nil {
-			return fmt.Errorf("config: cannot read table file %q: %w", entry.Name(), err)
+			return fmt.Errorf("config：无法读取数据表文件 %q：%w", entry.Name(), err)
 		}
 
 		cm.mu.Lock()
@@ -289,28 +287,28 @@ func (cm *configManager) HotReload() error {
 	return nil
 }
 
-// Validate checks that the config directory exists and all table files are valid JSON.
+// Validate 检查配置目录是否存在，以及所有数据表文件是否为有效 JSON。
 func (cm *configManager) Validate() error {
-	// Validate config directory.
+	// 校验配置目录。
 	if _, err := os.Stat(cm.configDir); err != nil {
-		return fmt.Errorf("config: config directory %q: %w", cm.configDir, err)
+		return fmt.Errorf("config：配置目录 %q：%w", cm.configDir, err)
 	}
 
-	// Validate table files.
+	// 校验数据表文件。
 	info, err := os.Stat(cm.tableDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil // no tables dir is acceptable
+			return nil // 没有数据表目录是可接受的
 		}
-		return fmt.Errorf("config: table directory %q: %w", cm.tableDir, err)
+		return fmt.Errorf("config：数据表目录 %q：%w", cm.tableDir, err)
 	}
 	if !info.IsDir() {
-		return fmt.Errorf("config: table path %q is not a directory", cm.tableDir)
+		return fmt.Errorf("config：数据表路径 %q 不是目录", cm.tableDir)
 	}
 
 	entries, err := os.ReadDir(cm.tableDir)
 	if err != nil {
-		return fmt.Errorf("config: cannot read table dir %q: %w", cm.tableDir, err)
+		return fmt.Errorf("config：无法读取数据表目录 %q：%w", cm.tableDir, err)
 	}
 
 	for _, entry := range entries {
@@ -320,29 +318,29 @@ func (cm *configManager) Validate() error {
 		filePath := filepath.Join(cm.tableDir, entry.Name())
 		data, err := os.ReadFile(filePath)
 		if err != nil {
-			return fmt.Errorf("config: cannot read %q: %w", filePath, err)
+			return fmt.Errorf("config：无法读取 %q：%w", filePath, err)
 		}
 		var rows []map[string]interface{}
 		if err := json.Unmarshal(data, &rows); err != nil {
-			return fmt.Errorf("config: invalid JSON in %q: %w", filePath, err)
+			return fmt.Errorf("config：%q 中 JSON 格式无效：%w", filePath, err)
 		}
 		for i, row := range rows {
 			if _, ok := row["id"]; !ok {
-				return fmt.Errorf("config: %q row %d missing required 'id' field", filePath, i)
+				return fmt.Errorf("config：%q 第 %d 行缺少必填字段 'id'", filePath, i)
 			}
 		}
 	}
 	return nil
 }
 
-// OnChange registers a callback that fires when a config key changes.
+// OnChange 注册一个回调，在配置键变更时触发。
 func (cm *configManager) OnChange(handler func(key string)) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 	cm.changeHandlers = append(cm.changeHandlers, handler)
 }
 
-// notifyChange invokes all registered change handlers.
+// notifyChange 调用所有已注册的变更处理器。
 func (cm *configManager) notifyChange(key string) {
 	cm.mu.RLock()
 	handlers := make([]func(key string), len(cm.changeHandlers))
@@ -354,12 +352,11 @@ func (cm *configManager) notifyChange(key string) {
 	}
 }
 
-// StartWatching begins file-system watching on the tableDir for hot reload.
-// It uses GoFrame's gfsnotify to detect file changes and triggers HotReload
-// with a small debounce window.
+// StartWatching 开始对 tableDir 进行文件系统监听以支持热重载。
+// 使用 GoFrame 的 gfsnotify 检测文件变更，并在小防抖窗口后触发 HotReload。
 func (cm *configManager) StartWatching() error {
 	if _, err := os.Stat(cm.tableDir); os.IsNotExist(err) {
-		return nil // nothing to watch
+		return nil // 没有需要监听的目录
 	}
 
 	var debounceTimer *time.Timer
@@ -376,7 +373,7 @@ func (cm *configManager) StartWatching() error {
 		})
 	})
 	if err != nil {
-		return fmt.Errorf("config: failed to watch %q: %w", cm.tableDir, err)
+		return fmt.Errorf("config：监听 %q 失败：%w", cm.tableDir, err)
 	}
 
 	cm.mu.Lock()
@@ -385,7 +382,7 @@ func (cm *configManager) StartWatching() error {
 	return nil
 }
 
-// StopWatching removes all file watchers.
+// StopWatching 移除所有文件监听器。
 func (cm *configManager) StopWatching() {
 	cm.mu.Lock()
 	callbacks := cm.watchCallbacks

@@ -1,5 +1,5 @@
-// Package aoi provides Area of Interest management for the MMRPG game engine,
-// including spatial indexing and visibility tracking.
+// Package aoi 为 MMRPG 游戏引擎提供兴趣区域（AOI）管理，
+// 包括空间索引和可见性跟踪。
 package aoi
 
 import (
@@ -9,7 +9,7 @@ import (
 	"gfgame/internal/engine"
 )
 
-// SpatialIndex provides spatial queries over entities positioned in 3D space.
+// SpatialIndex 提供对三维空间中实体位置的空间查询。
 type SpatialIndex interface {
 	Insert(entityID engine.EntityID, pos engine.Vector3)
 	Remove(entityID engine.EntityID)
@@ -17,39 +17,38 @@ type SpatialIndex interface {
 	QueryRange(center engine.Vector3, radius float32) []engine.EntityID
 }
 
-// GridConfig holds configuration for the grid-based spatial index.
+// GridConfig 保存基于网格的空间索引配置。
 type GridConfig struct {
-	CellSize float32 // Width/height of each grid cell (default 100).
+	CellSize float32 // 每个网格单元的宽/高（默认 100）。
 }
 
-// DefaultGridConfig returns a GridConfig with sensible defaults.
+// DefaultGridConfig 返回带有合理默认值的 GridConfig。
 func DefaultGridConfig() GridConfig {
 	return GridConfig{CellSize: 100}
 }
 
-// cellKey identifies a single cell in the 2D grid (using X/Z plane).
+// cellKey 标识二维网格中的单个单元（使用 X/Z 平面）。
 type cellKey struct {
 	cx, cz int
 }
 
-// entityEntry stores the current position and cell of an entity.
+// entityEntry 存储实体的当前位置和所在单元。
 type entityEntry struct {
 	pos  engine.Vector3
 	cell cellKey
 }
 
-// GridSpatialIndex is a grid-based (九宫格) spatial index.
-// It divides the world into uniform cells on the X-Z plane and tracks which
-// entities reside in each cell. Range queries inspect only the cells that
-// overlap the query circle, making them efficient for large worlds.
+// GridSpatialIndex 是基于网格（九宫格）的空间索引。
+// 它将世界划分为 X-Z 平面上的均匀单元，并跟踪每个单元中的实体。
+// 范围查询只检查与查询圆重叠的单元，在大型世界中效率较高。
 type GridSpatialIndex struct {
 	mu       sync.RWMutex
 	cellSize float32
-	cells    map[cellKey]map[engine.EntityID]struct{} // cell → set of entities
-	entities map[engine.EntityID]*entityEntry            // entity → position + cell
+	cells    map[cellKey]map[engine.EntityID]struct{} // 单元 → 实体集合
+	entities map[engine.EntityID]*entityEntry            // 实体 → 位置 + 单元
 }
 
-// NewGridSpatialIndex creates a new grid-based spatial index.
+// NewGridSpatialIndex 创建新的基于网格的空间索引。
 func NewGridSpatialIndex(cfg GridConfig) *GridSpatialIndex {
 	cs := cfg.CellSize
 	if cs <= 0 {
@@ -62,7 +61,7 @@ func NewGridSpatialIndex(cfg GridConfig) *GridSpatialIndex {
 	}
 }
 
-// posToCell converts a world position to the grid cell key (X-Z plane).
+// posToCell 将世界坐标转换为网格单元键（X-Z 平面）。
 func (g *GridSpatialIndex) posToCell(pos engine.Vector3) cellKey {
 	return cellKey{
 		cx: int(math.Floor(float64(pos.X) / float64(g.cellSize))),
@@ -70,12 +69,12 @@ func (g *GridSpatialIndex) posToCell(pos engine.Vector3) cellKey {
 	}
 }
 
-// Insert adds an entity at the given position.
+// Insert 在给定位置添加实体。
 func (g *GridSpatialIndex) Insert(entityID engine.EntityID, pos engine.Vector3) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	// If already present, remove first to avoid stale references.
+	// 若已存在，先移除以避免过期引用。
 	if old, ok := g.entities[entityID]; ok {
 		g.removeCellEntry(old.cell, entityID)
 	}
@@ -85,7 +84,7 @@ func (g *GridSpatialIndex) Insert(entityID engine.EntityID, pos engine.Vector3) 
 	g.addCellEntry(ck, entityID)
 }
 
-// Remove deletes an entity from the index.
+// Remove 从索引中删除实体。
 func (g *GridSpatialIndex) Remove(entityID engine.EntityID) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -98,14 +97,14 @@ func (g *GridSpatialIndex) Remove(entityID engine.EntityID) {
 	delete(g.entities, entityID)
 }
 
-// Update moves an entity to a new position, updating its cell if needed.
+// Update 将实体移动到新位置，必要时更新其所在单元。
 func (g *GridSpatialIndex) Update(entityID engine.EntityID, newPos engine.Vector3) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
 	entry, ok := g.entities[entityID]
 	if !ok {
-		// Entity not tracked yet — treat as insert.
+		// 实体尚未跟踪 — 视为插入。
 		ck := g.posToCell(newPos)
 		g.entities[entityID] = &entityEntry{pos: newPos, cell: ck}
 		g.addCellEntry(ck, entityID)
@@ -122,8 +121,8 @@ func (g *GridSpatialIndex) Update(entityID engine.EntityID, newPos engine.Vector
 	}
 }
 
-// QueryRange returns all entity IDs within the given radius from center
-// (Euclidean distance on the X-Z plane; Y is also considered).
+// QueryRange 返回距中心点给定半径内的所有实体 ID
+// （X-Z 平面上的欧几里得距离；Y 轴也纳入计算）。
 func (g *GridSpatialIndex) QueryRange(center engine.Vector3, radius float32) []engine.EntityID {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
@@ -135,7 +134,7 @@ func (g *GridSpatialIndex) QueryRange(center engine.Vector3, radius float32) []e
 	r64 := float64(radius)
 	r2 := r64 * r64
 
-	// Determine the range of cells that could overlap the query circle.
+	// 确定可能与查询圆重叠的单元范围。
 	minCX := int(math.Floor((float64(center.X) - r64) / float64(g.cellSize)))
 	maxCX := int(math.Floor((float64(center.X) + r64) / float64(g.cellSize)))
 	minCZ := int(math.Floor((float64(center.Z) - r64) / float64(g.cellSize)))
@@ -165,7 +164,7 @@ func (g *GridSpatialIndex) QueryRange(center engine.Vector3, radius float32) []e
 	return result
 }
 
-// ---------- internal helpers ----------
+// ---------- 内部辅助函数 ----------
 
 func (g *GridSpatialIndex) addCellEntry(ck cellKey, eid engine.EntityID) {
 	bucket, ok := g.cells[ck]

@@ -1,5 +1,5 @@
-// Package persistence provides data persistence for the MMRPG game engine.
-// It implements async batch writing, auto-save, retry logic, and recovery file fallback.
+// Package persistence 为 MMRPG 游戏引擎提供数据持久化功能。
+// 实现了异步批量写入、自动保存、重试逻辑和恢复文件回退机制。
 package persistence
 
 import (
@@ -12,14 +12,14 @@ import (
 	"gfgame/internal/engine"
 )
 
-// Component mirrors the engine ECS Component interface for persistence use.
+// Component 镜像引擎 ECS 的 Component 接口，供持久化模块使用。
 type Component interface {
 	Type() engine.ComponentType
 }
 
-// --- Database Models ---
+// --- 数据库模型 ---
 
-// DBCharacter is the persistence model for a player character.
+// DBCharacter 是玩家角色的持久化模型。
 type DBCharacter struct {
 	ID         uint64    `orm:"id,primary" json:"id"`
 	Name       string    `orm:"name"       json:"name"`
@@ -36,7 +36,7 @@ type DBCharacter struct {
 	UpdatedAt  time.Time `orm:"updated_at" json:"updated_at"`
 }
 
-// DBEquipment is the persistence model for an equipment item.
+// DBEquipment 是装备物品的持久化模型。
 type DBEquipment struct {
 	ID          uint64 `orm:"id,primary"    json:"id"`
 	CharacterID uint64 `orm:"character_id"  json:"character_id"`
@@ -44,10 +44,10 @@ type DBEquipment struct {
 	SlotType    int    `orm:"slot_type"     json:"slot_type"`
 	Quality     int    `orm:"quality"       json:"quality"`
 	Level       int    `orm:"level"         json:"level"`
-	Attributes  string `orm:"attributes"    json:"attributes"` // JSON
+	Attributes  string `orm:"attributes"    json:"attributes"` // JSON 格式
 }
 
-// DBCombatLog is the persistence model for a combat log entry.
+// DBCombatLog 是战斗日志条目的持久化模型。
 type DBCombatLog struct {
 	ID        uint64    `orm:"id,primary" json:"id"`
 	CombatID  string    `orm:"combat_id"  json:"combat_id"`
@@ -60,17 +60,17 @@ type DBCombatLog struct {
 	CreatedAt time.Time `orm:"created_at" json:"created_at"`
 }
 
-// --- Configuration ---
+// --- 配置 ---
 
-// PersistenceConfig holds configuration for the persistence manager.
+// PersistenceConfig 保存持久化管理器的配置。
 type PersistenceConfig struct {
-	AutoSaveInterval time.Duration // default 5 minutes
-	MaxRetries       int           // default 3
+	AutoSaveInterval time.Duration // 默认 5 分钟
+	MaxRetries       int           // 默认 3 次
 	RecoveryFilePath string
 	BatchSize        int
 }
 
-// DefaultConfig returns a PersistenceConfig with sensible defaults.
+// DefaultConfig 返回带有合理默认值的 PersistenceConfig。
 func DefaultConfig() PersistenceConfig {
 	return PersistenceConfig{
 		AutoSaveInterval: 5 * time.Minute,
@@ -80,25 +80,25 @@ func DefaultConfig() PersistenceConfig {
 	}
 }
 
-// --- DataStore abstraction ---
+// --- DataStore 抽象 ---
 
-// DataStore abstracts the underlying storage so tests can use an in-memory mock.
+// DataStore 抽象底层存储，使测试可以使用内存模拟实现。
 type DataStore interface {
-	// SaveEntities persists a batch of entity data. Returns an error on failure.
+	// SaveEntities 批量持久化实体数据，失败时返回错误。
 	SaveEntities(entities []EntityData) error
-	// LoadEntity loads all component data for a single entity.
+	// LoadEntity 加载单个实体的所有组件数据。
 	LoadEntity(entityID engine.EntityID) (map[engine.ComponentType]Component, error)
 }
 
-// EntityData is the payload sent to the DataStore for persistence.
+// EntityData 是发送给 DataStore 进行持久化的载荷。
 type EntityData struct {
 	EntityID   engine.EntityID
 	Components map[engine.ComponentType]Component
 }
 
-// --- PersistenceManager interface ---
+// --- PersistenceManager 接口 ---
 
-// PersistenceManager is the public interface for the persistence module.
+// PersistenceManager 是持久化模块的公共接口。
 type PersistenceManager interface {
 	SaveAsync(entities []engine.EntityID) error
 	SaveSync(entities []engine.EntityID) error
@@ -113,37 +113,37 @@ type PersistenceManager interface {
 
 type saveRequest struct {
 	entities []engine.EntityID
-	errCh    chan error // nil for async (fire-and-forget), non-nil for sync
+	errCh    chan error // 异步时为 nil（即发即忘），同步时非 nil
 }
 
-// --- Implementation ---
+// --- 实现 ---
 
 type persistenceManager struct {
 	config   PersistenceConfig
 	store    DataStore
-	dirty    map[engine.EntityID]bool // tracks entities with unsaved changes
+	dirty    map[engine.EntityID]bool // 追踪有未保存变更的实体
 	dirtyMu  sync.Mutex
 
 	saveCh   chan saveRequest
 	stopCh   chan struct{}
 	doneCh   chan struct{}
 
-	// entityDataProvider is called to snapshot entity data before saving.
-	// If nil, SaveAsync/SaveSync will ask the DataStore to save entity IDs directly.
+	// entityDataProvider 在保存前用于快照实体数据。
+	// 为 nil 时，SaveAsync/SaveSync 直接将实体 ID 传给 DataStore。
 	entityDataProvider func(id engine.EntityID) (map[engine.ComponentType]Component, bool)
 }
 
-// Option configures a persistenceManager.
+// Option 用于配置 persistenceManager。
 type Option func(*persistenceManager)
 
-// WithEntityDataProvider sets a callback that provides current entity data for saving.
+// WithEntityDataProvider 设置提供当前实体数据的回调函数。
 func WithEntityDataProvider(fn func(engine.EntityID) (map[engine.ComponentType]Component, bool)) Option {
 	return func(pm *persistenceManager) {
 		pm.entityDataProvider = fn
 	}
 }
 
-// NewPersistenceManager creates a new PersistenceManager backed by the given DataStore.
+// NewPersistenceManager 创建由给定 DataStore 支撑的新 PersistenceManager。
 func NewPersistenceManager(store DataStore, config PersistenceConfig, opts ...Option) PersistenceManager {
 	pm := &persistenceManager{
 		config: config,
@@ -159,31 +159,31 @@ func NewPersistenceManager(store DataStore, config PersistenceConfig, opts ...Op
 	return pm
 }
 
-// Start launches the background save worker and auto-save timer.
+// Start 启动后台保存 Worker 和自动保存定时器。
 func (pm *persistenceManager) Start() error {
 	go pm.runWorker()
 	return nil
 }
 
-// Stop signals the worker to drain remaining saves and exit.
+// Stop 通知 Worker 排空剩余保存任务后退出。
 func (pm *persistenceManager) Stop() error {
 	close(pm.stopCh)
 	<-pm.doneCh
 	return nil
 }
 
-// SaveAsync enqueues entities for asynchronous persistence. Non-blocking.
+// SaveAsync 将实体加入异步持久化队列，非阻塞。
 func (pm *persistenceManager) SaveAsync(entities []engine.EntityID) error {
 	pm.markDirty(entities)
 	select {
 	case pm.saveCh <- saveRequest{entities: entities}:
 		return nil
 	default:
-		return fmt.Errorf("persistence: save queue full")
+		return fmt.Errorf("persistence：保存队列已满")
 	}
 }
 
-// SaveSync persists entities synchronously, blocking until complete.
+// SaveSync 同步持久化实体，阻塞直到完成。
 func (pm *persistenceManager) SaveSync(entities []engine.EntityID) error {
 	pm.markDirty(entities)
 	errCh := make(chan error, 1)
@@ -191,12 +191,12 @@ func (pm *persistenceManager) SaveSync(entities []engine.EntityID) error {
 	return <-errCh
 }
 
-// Load delegates to the DataStore.
+// Load 委托给 DataStore 加载实体数据。
 func (pm *persistenceManager) Load(entityID engine.EntityID) (map[engine.ComponentType]Component, error) {
 	return pm.store.LoadEntity(entityID)
 }
 
-// FlushAll persists all dirty entities synchronously.
+// FlushAll 同步持久化所有脏实体。
 func (pm *persistenceManager) FlushAll() error {
 	pm.dirtyMu.Lock()
 	ids := make([]engine.EntityID, 0, len(pm.dirty))
@@ -211,19 +211,19 @@ func (pm *persistenceManager) FlushAll() error {
 	return pm.saveWithRetry(ids)
 }
 
-// SaveToRecoveryFile writes arbitrary data to the configured recovery file.
+// SaveToRecoveryFile 将任意数据写入配置的恢复文件。
 func (pm *persistenceManager) SaveToRecoveryFile(data interface{}) error {
 	b, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
-		return fmt.Errorf("persistence: marshal recovery data: %w", err)
+		return fmt.Errorf("persistence：序列化恢复数据失败：%w", err)
 	}
 	if err := os.WriteFile(pm.config.RecoveryFilePath, b, 0644); err != nil {
-		return fmt.Errorf("persistence: write recovery file: %w", err)
+		return fmt.Errorf("persistence：写入恢复文件失败：%w", err)
 	}
 	return nil
 }
 
-// --- internal helpers ---
+// --- 内部辅助函数 ---
 
 func (pm *persistenceManager) markDirty(ids []engine.EntityID) {
 	pm.dirtyMu.Lock()
@@ -241,7 +241,7 @@ func (pm *persistenceManager) clearDirty(ids []engine.EntityID) {
 	pm.dirtyMu.Unlock()
 }
 
-// runWorker is the background goroutine that processes save requests and auto-save ticks.
+// runWorker 是处理保存请求和自动保存定时器的后台 goroutine。
 func (pm *persistenceManager) runWorker() {
 	defer close(pm.doneCh)
 
@@ -260,16 +260,16 @@ func (pm *persistenceManager) runWorker() {
 			_ = pm.FlushAll()
 
 		case <-pm.stopCh:
-			// Drain remaining requests.
+			// 排空剩余请求。
 			pm.drainQueue()
-			// Final flush of all dirty data.
+			// 最终刷新所有脏数据。
 			_ = pm.FlushAll()
 			return
 		}
 	}
 }
 
-// drainQueue processes all pending save requests in the channel.
+// drainQueue 处理 channel 中所有待处理的保存请求。
 func (pm *persistenceManager) drainQueue() {
 	for {
 		select {
@@ -284,15 +284,15 @@ func (pm *persistenceManager) drainQueue() {
 	}
 }
 
-// saveWithRetry attempts to save entities with up to MaxRetries attempts.
-// On final failure, it saves to the recovery file.
+// saveWithRetry 最多重试 MaxRetries 次保存实体。
+// 最终失败时将数据写入恢复文件。
 func (pm *persistenceManager) saveWithRetry(ids []engine.EntityID) error {
 	data := pm.collectEntityData(ids)
 	if len(data) == 0 {
 		return nil
 	}
 
-	// Batch the data according to BatchSize.
+	// 按 BatchSize 分批处理。
 	batches := pm.splitBatches(data)
 
 	var lastErr error
@@ -306,7 +306,7 @@ func (pm *persistenceManager) saveWithRetry(ids []engine.EntityID) error {
 		}
 		if err != nil {
 			lastErr = err
-			// Save failed batch to recovery file.
+			// 将失败批次写入恢复文件。
 			_ = pm.SaveToRecoveryFile(batch)
 		}
 	}
@@ -319,7 +319,7 @@ func (pm *persistenceManager) saveWithRetry(ids []engine.EntityID) error {
 
 func (pm *persistenceManager) collectEntityData(ids []engine.EntityID) []EntityData {
 	if pm.entityDataProvider == nil {
-		// Without a provider, create minimal EntityData entries.
+		// 没有提供者时，创建最小 EntityData 条目。
 		result := make([]EntityData, 0, len(ids))
 		for _, id := range ids {
 			result = append(result, EntityData{EntityID: id})

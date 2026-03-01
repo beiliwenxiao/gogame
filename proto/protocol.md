@@ -1,67 +1,67 @@
-# MMRPG Game Engine — Protocol Documentation
+# MMRPG 游戏引擎 — 通信协议文档
 
-**Protocol Version:** 1  
-**Encoding:** Binary (default) or JSON (debug)  
-**Transport:** TCP long-connection or WebSocket (ws/wss)
+**协议版本：** 1  
+**编码格式：** 二进制（默认）或 JSON（调试模式）  
+**传输层：** TCP 长连接 或 WebSocket（ws/wss）
 
 ---
 
-## 1. Frame Format
+## 1. 帧格式
 
-All messages use the following wire frame:
+所有消息均采用以下帧结构：
 
 ```
 +------------------+------------------+---------------------------+
-| Length (4 bytes) | MsgID (2 bytes)  | Body (Length-2 bytes)     |
+| 长度（4 字节）    | 消息ID（2 字节） | 消息体（长度-2 字节）      |
 +------------------+------------------+---------------------------+
 ```
 
-| Field  | Type     | Description                              |
-|--------|----------|------------------------------------------|
-| Length | uint32 BE | Total byte count of MsgID + Body         |
-| MsgID  | uint16 BE | Message type identifier (see table below)|
-| Body   | bytes    | Message-specific payload                 |
+| 字段   | 类型        | 说明                                      |
+|--------|-------------|-------------------------------------------|
+| 长度   | uint32 大端 | 消息ID + 消息体的总字节数                  |
+| 消息ID | uint16 大端 | 消息类型标识符（见下方消息ID表）            |
+| 消息体 | bytes       | 各消息类型的具体数据                       |
 
-Minimum valid frame size: **6 bytes** (4 + 2 + 0-byte body).  
-Frames with `Length < 2` are discarded and the connection is logged as malformed.
-
----
-
-## 2. Protocol Version
-
-The client sends `ProtocolVersion` in `LoginRequest` (MsgID `0x0001`).  
-The server rejects connections with an incompatible version and closes the connection.
-
-Current supported version: **1**
+最小有效帧大小：**6 字节**（4 + 2 + 0 字节消息体）。  
+`长度 < 2` 的帧将被丢弃，并记录连接异常日志。
 
 ---
 
-## 3. Message ID Table
+## 2. 协议版本
 
-| MsgID  | Name              | Direction       | Description                    |
-|--------|-------------------|-----------------|--------------------------------|
-| 0x0001 | LoginRequest      | Client → Server | Authentication and version check |
-| 0x0002 | MoveRequest       | Client → Server | Movement command               |
-| 0x0003 | SkillCastRequest  | Client → Server | Skill cast command             |
-| 0x0004 | ChatMessage       | Client → Server | Chat message                   |
+客户端在 `LoginRequest`（消息ID `0x0001`）中携带 `ProtocolVersion` 字段。  
+服务端对版本不兼容的连接拒绝并关闭。
+
+当前支持版本：**1**
 
 ---
 
-## 4. Message Definitions
+## 3. 消息ID 表
 
-### 4.1 LoginRequest (0x0001)
+| 消息ID | 名称              | 方向            | 说明                     |
+|--------|-------------------|-----------------|--------------------------|
+| 0x0001 | LoginRequest      | 客户端 → 服务端 | 身份验证与版本校验         |
+| 0x0002 | MoveRequest       | 客户端 → 服务端 | 移动指令                  |
+| 0x0003 | SkillCastRequest  | 客户端 → 服务端 | 技能释放指令               |
+| 0x0004 | ChatMessage       | 客户端 → 服务端 | 聊天消息                  |
 
-**Direction:** Client → Server
+---
 
-**Binary layout:**
+## 4. 消息定义
+
+### 4.1 LoginRequest（0x0001）
+
+**方向：** 客户端 → 服务端
+
+**二进制布局：**
 
 ```
-[4 bytes: token length (uint32 BE)]
-[N bytes: token (UTF-8 string)]
-[4 bytes: protocol_version (uint32 BE)]
+[4 字节：token 长度（uint32 大端）]
+[N 字节：token（UTF-8 字符串）]
+[4 字节：protocol_version（uint32 大端）]
 ```
 
-**JSON example:**
+**JSON 示例：**
 ```json
 {
   "msg_type": "LoginRequest",
@@ -72,29 +72,29 @@ Current supported version: **1**
 }
 ```
 
-| Field            | Type   | Description                              |
-|------------------|--------|------------------------------------------|
-| token            | string | Authentication token (JWT or session key)|
-| protocol_version | uint32 | Client protocol version                  |
+| 字段             | 类型   | 说明                              |
+|------------------|--------|-----------------------------------|
+| token            | string | 身份验证令牌（JWT 或 Session Key） |
+| protocol_version | uint32 | 客户端协议版本号                   |
 
-**Success response:** Server begins sending state sync messages.  
-**Failure:** Server closes connection with error log.
+**成功响应：** 服务端开始推送状态同步消息。  
+**失败处理：** 服务端关闭连接并记录错误日志。
 
 ---
 
-### 4.2 MoveRequest (0x0002)
+### 4.2 MoveRequest（0x0002）
 
-**Direction:** Client → Server
+**方向：** 客户端 → 服务端
 
-**Binary layout:**
+**二进制布局：**
 
 ```
-[4 bytes: X (float32 BE)]
-[4 bytes: Y (float32 BE)]
-[4 bytes: Z (float32 BE)]
+[4 字节：X（float32 大端）]
+[4 字节：Y（float32 大端）]
+[4 字节：Z（float32 大端）]
 ```
 
-**JSON example:**
+**JSON 示例：**
 ```json
 {
   "msg_type": "MoveRequest",
@@ -106,29 +106,29 @@ Current supported version: **1**
 }
 ```
 
-| Field | Type    | Description              |
-|-------|---------|--------------------------|
-| x     | float32 | Target X world coordinate|
-| y     | float32 | Target Y world coordinate|
-| z     | float32 | Target Z world coordinate|
+| 字段 | 类型    | 说明              |
+|------|---------|-------------------|
+| x    | float32 | 目标 X 世界坐标   |
+| y    | float32 | 目标 Y 世界坐标   |
+| z    | float32 | 目标 Z 世界坐标   |
 
 ---
 
-### 4.3 SkillCastRequest (0x0003)
+### 4.3 SkillCastRequest（0x0003）
 
-**Direction:** Client → Server
+**方向：** 客户端 → 服务端
 
-**Binary layout:**
+**二进制布局：**
 
 ```
-[4 bytes: skill_id (uint32 BE)]
-[8 bytes: target_id (uint64 BE)]
-[4 bytes: target_x (float32 BE)]
-[4 bytes: target_y (float32 BE)]
-[4 bytes: target_z (float32 BE)]
+[4 字节：skill_id（uint32 大端）]
+[8 字节：target_id（uint64 大端）]
+[4 字节：target_x（float32 大端）]
+[4 字节：target_y（float32 大端）]
+[4 字节：target_z（float32 大端）]
 ```
 
-**JSON example:**
+**JSON 示例：**
 ```json
 {
   "msg_type": "SkillCastRequest",
@@ -142,131 +142,131 @@ Current supported version: **1**
 }
 ```
 
-| Field     | Type    | Description                              |
-|-----------|---------|------------------------------------------|
-| skill_id  | uint32  | Skill definition ID                      |
-| target_id | uint64  | Target entity ID (0 = ground/position)   |
-| target_x  | float32 | Target X coordinate                      |
-| target_y  | float32 | Target Y coordinate                      |
-| target_z  | float32 | Target Z coordinate                      |
+| 字段      | 类型    | 说明                              |
+|-----------|---------|-----------------------------------|
+| skill_id  | uint32  | 技能定义 ID                       |
+| target_id | uint64  | 目标实体 ID（0 表示地面/坐标位置） |
+| target_x  | float32 | 目标 X 坐标                       |
+| target_y  | float32 | 目标 Y 坐标                       |
+| target_z  | float32 | 目标 Z 坐标                       |
 
 ---
 
-### 4.4 ChatMessage (0x0004)
+### 4.4 ChatMessage（0x0004）
 
-**Direction:** Client → Server
+**方向：** 客户端 → 服务端
 
-**Binary layout:**
+**二进制布局：**
 
 ```
-[8 bytes: sender_id (uint64 BE)]
-[1 byte:  channel (uint8)]
-[4 bytes: content length (uint32 BE)]
-[N bytes: content (UTF-8 string)]
+[8 字节：sender_id（uint64 大端）]
+[1 字节：channel（uint8）]
+[4 字节：content 长度（uint32 大端）]
+[N 字节：content（UTF-8 字符串）]
 ```
 
-**JSON example:**
+**JSON 示例：**
 ```json
 {
   "msg_type": "ChatMessage",
   "data": {
     "sender_id": 88001234,
     "channel": 1,
-    "content": "Hello world!"
+    "content": "你好，世界！"
   }
 }
 ```
 
-| Field     | Type   | Description                                      |
-|-----------|--------|--------------------------------------------------|
-| sender_id | uint64 | Entity ID of the sender                          |
-| channel   | uint8  | Chat channel: 0=World, 1=Zone, 2=Party, 3=Private|
-| content   | string | Message text (UTF-8, max 512 bytes)              |
+| 字段      | 类型   | 说明                                              |
+|-----------|--------|---------------------------------------------------|
+| sender_id | uint64 | 发送者实体 ID                                     |
+| channel   | uint8  | 聊天频道：0=世界，1=区域，2=队伍，3=私聊           |
+| content   | string | 消息内容（UTF-8，最大 512 字节）                   |
 
 ---
 
-## 5. Compact Codec (Lockstep Mode)
+## 5. 紧凑编解码（帧同步模式）
 
-In lockstep sync mode, high-frequency operations are encoded as compact strings to minimise bandwidth.
+在帧同步模式下，高频操作使用紧凑字符串编码以降低带宽消耗。
 
-**Format:** `[ShortID][OpCode][...][ShortID][OpCode]...`
+**格式：** `[短ID][操作码][...][短ID][操作码]...`
 
-**Operation codes:**
+**操作码表：**
 
-| Code | Operation  | Description          |
-|------|------------|----------------------|
-| `u`  | MoveUp     | Move entity upward   |
-| `d`  | MoveDown   | Move entity downward |
-| `l`  | MoveLeft   | Move entity left     |
-| `r`  | MoveRight  | Move entity right    |
-| `a`  | Attack     | Basic attack         |
-| `s`  | Skill      | Skill cast           |
-| `i`  | Interact   | Interaction          |
-| `c`  | Chat       | Chat message         |
+| 操作码 | 操作名称   | 说明         |
+|--------|------------|--------------|
+| `u`    | MoveUp     | 实体向上移动 |
+| `d`    | MoveDown   | 实体向下移动 |
+| `l`    | MoveLeft   | 实体向左移动 |
+| `r`    | MoveRight  | 实体向右移动 |
+| `a`    | Attack     | 普通攻击     |
+| `s`    | Skill      | 技能释放     |
+| `i`    | Interact   | 交互操作     |
+| `c`    | Chat       | 聊天消息     |
 
-**Example:** `"Au10aB"` — entity A moves up 10 units, entity B attacks.
+**示例：** `"Au10aB"` — 实体 A 向上移动 10 单位，实体 B 发起普通攻击。
 
-Batch encoding merges multiple operations for the same entity in one tick.
+批量编码可将同一实体在同一 tick 内的多个操作合并为一条记录。
 
 ---
 
-## 6. Client Connection Flow
+## 6. 客户端连接流程
 
 ```
-Client                          Server
+客户端                          服务端
   |                               |
-  |--- TCP/WebSocket connect ----->|
-  |                               | (assign session ID, start heartbeat)
+  |--- TCP/WebSocket 建立连接 ---->|
+  |                               | （分配 Session ID，启动心跳）
   |--- LoginRequest (0x0001) ----->|
-  |                               | (validate token + protocol version)
-  |<-- state sync begins ---------|
+  |                               | （校验 token 与协议版本）
+  |<-- 开始推送状态同步 -----------|
   |                               |
   |--- MoveRequest (0x0002) ------>|
   |--- SkillCastRequest (0x0003) ->|
   |--- ChatMessage (0x0004) ------>|
   |                               |
-  |   [heartbeat ping/pong]        |
+  |   [心跳 ping/pong]             |
   |                               |
-  |--- disconnect / timeout ------>|
-  |                               | (session cleanup, entity removal)
+  |--- 断开连接 / 超时 ----------->|
+  |                               | （Session 清理，实体移除）
 ```
 
 ---
 
-## 7. Heartbeat
+## 7. 心跳机制
 
-- Server sends a heartbeat ping every **30 seconds** (configurable).
-- Client must respond within **10 seconds** (configurable).
-- No response → server closes the connection and fires a disconnect event.
-
----
-
-## 8. Reconnection
-
-1. Client reconnects with the same `token`.
-2. Server matches the token to the existing session.
-3. If the session is still alive (within grace period), state is restored.
-4. If the session has expired, the client must re-enter the scene.
+- 服务端每 **30 秒**（可配置）发送一次心跳 ping。
+- 客户端须在 **10 秒**（可配置）内响应 pong。
+- 超时未响应 → 服务端关闭连接并触发断开事件。
 
 ---
 
-## 9. Error Codes
+## 8. 断线重连
 
-| Code | Name                  | Description                              |
-|------|-----------------------|------------------------------------------|
-| 1001 | ERR_INVALID_TOKEN     | Authentication token invalid or expired  |
-| 1002 | ERR_VERSION_MISMATCH  | Protocol version not supported           |
-| 1003 | ERR_ROOM_FULL         | Target room has reached capacity         |
-| 1004 | ERR_ADMISSION_DENIED  | Admission check failed                   |
-| 1005 | ERR_SKILL_ON_COOLDOWN | Skill is not ready                       |
-| 1006 | ERR_EQUIPMENT_LOCKED  | Equipment change blocked during combat   |
-| 1007 | ERR_MALFORMED_MESSAGE | Message frame could not be parsed        |
+1. 客户端使用相同的 `token` 重新连接。
+2. 服务端根据 token 匹配已有 Session。
+3. 若 Session 仍在宽限期内，恢复状态继续游戏。
+4. 若 Session 已过期，客户端需重新进入场景。
 
 ---
 
-## 10. Versioning
+## 9. 错误码
 
-- The protocol version is a monotonically increasing integer.
-- Breaking changes increment the version.
-- Clients with an unsupported version receive `ERR_VERSION_MISMATCH` and are disconnected.
-- The server may support a range of versions for backward compatibility.
+| 错误码 | 名称                  | 说明                           |
+|--------|-----------------------|--------------------------------|
+| 1001   | ERR_INVALID_TOKEN     | 身份验证令牌无效或已过期        |
+| 1002   | ERR_VERSION_MISMATCH  | 协议版本不受支持                |
+| 1003   | ERR_ROOM_FULL         | 目标房间已达到人数上限          |
+| 1004   | ERR_ADMISSION_DENIED  | 准入检查未通过                  |
+| 1005   | ERR_SKILL_ON_COOLDOWN | 技能冷却中，尚未就绪            |
+| 1006   | ERR_EQUIPMENT_LOCKED  | 战斗中禁止更换装备              |
+| 1007   | ERR_MALFORMED_MESSAGE | 消息帧解析失败                  |
+
+---
+
+## 10. 版本管理
+
+- 协议版本号为单调递增整数。
+- 破坏性变更时版本号加一。
+- 版本不受支持的客户端将收到 `ERR_VERSION_MISMATCH` 并被断开连接。
+- 服务端可支持一定范围的历史版本以保证向后兼容。

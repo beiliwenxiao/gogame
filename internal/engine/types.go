@@ -1,158 +1,157 @@
-// Package engine provides core types and interfaces for the MMRPG game engine.
+// Package engine 为 MMRPG 游戏引擎提供核心类型和接口定义。
 package engine
 
-// EntityID is the globally unique identifier for an entity in the ECS world.
+// EntityID 是 ECS 世界中实体的全局唯一标识符。
 type EntityID uint64
 
-// ComponentType identifies the type of a Component.
+// ComponentType 标识组件的类型。
 type ComponentType uint16
 
-// Vector3 represents a 3D coordinate or direction vector.
+// Vector3 表示三维坐标或方向向量。
 type Vector3 struct {
 	X float32
 	Y float32
 	Z float32
 }
 
-// TransportProtocol identifies the underlying network transport.
+// TransportProtocol 标识底层网络传输协议。
 type TransportProtocol int
 
 const (
-	// ProtocolTCP represents a TCP long-connection transport.
+	// ProtocolTCP 表示 TCP 长连接传输。
 	ProtocolTCP TransportProtocol = iota
-	// ProtocolWebSocket represents a WebSocket transport.
+	// ProtocolWebSocket 表示 WebSocket 传输。
 	ProtocolWebSocket
 )
 
-// SyncMode identifies the synchronization strategy used by a Room.
+// SyncMode 标识房间使用的同步策略。
 type SyncMode int
 
 const (
-	// SyncModeLockstep uses lockstep (frame) synchronization.
+	// SyncModeLockstep 使用帧同步（锁步）。
 	SyncModeLockstep SyncMode = iota
-	// SyncModeState uses authoritative state synchronization.
+	// SyncModeState 使用权威状态同步。
 	SyncModeState
 )
 
-// TickPhase represents one of the four ordered phases within a single Tick.
+// TickPhase 表示单次 Tick 内四个有序阶段之一。
 type TickPhase int
 
 const (
-	// PhaseInput is the input-collection phase.
+	// PhaseInput 是输入采集阶段。
 	PhaseInput TickPhase = iota
-	// PhaseUpdate is the logic-update phase.
+	// PhaseUpdate 是逻辑更新阶段。
 	PhaseUpdate
-	// PhaseSync is the state-synchronization phase.
+	// PhaseSync 是状态同步阶段。
 	PhaseSync
-	// PhaseCleanup is the cleanup phase.
+	// PhaseCleanup 是清理阶段。
 	PhaseCleanup
 )
 
-// EquipmentSlotType identifies an equipment slot on a character.
+// EquipmentSlotType 标识角色身上的装备槽位。
 type EquipmentSlotType int
 
 const (
-	// SlotWeapon is the weapon slot.
+	// SlotWeapon 武器槽。
 	SlotWeapon EquipmentSlotType = iota
-	// SlotHelmet is the helmet slot.
+	// SlotHelmet 头盔槽。
 	SlotHelmet
-	// SlotArmor is the armor/chest slot.
+	// SlotArmor 护甲/胸甲槽。
 	SlotArmor
-	// SlotBoots is the boots slot.
+	// SlotBoots 靴子槽。
 	SlotBoots
-	// SlotNecklace is the necklace slot.
+	// SlotNecklace 项链槽。
 	SlotNecklace
-	// SlotRing is the ring slot.
+	// SlotRing 戒指槽。
 	SlotRing
 )
 
-// EquipmentQuality represents the quality tier of an equipment item.
+// EquipmentQuality 表示装备的品质等级。
 type EquipmentQuality int
 
 const (
-	// QualityNormal is the base quality tier.
+	// QualityNormal 普通品质。
 	QualityNormal EquipmentQuality = iota
-	// QualityRare is the rare quality tier.
+	// QualityRare 稀有品质。
 	QualityRare
-	// QualityEpic is the epic quality tier.
+	// QualityEpic 史诗品质。
 	QualityEpic
-	// QualityLegendary is the legendary quality tier.
+	// QualityLegendary 传说品质。
 	QualityLegendary
 )
 
-// TargetMode defines how a skill selects its targets.
+// TargetMode 定义技能选择目标的方式。
 type TargetMode int
 
 const (
-	// TargetSingle selects a single target.
+	// TargetSingle 单体目标。
 	TargetSingle TargetMode = iota
-	// TargetFan selects targets in a fan/cone area.
+	// TargetFan 扇形/锥形范围目标。
 	TargetFan
-	// TargetCircle selects targets in a circular area.
+	// TargetCircle 圆形范围目标。
 	TargetCircle
-	// TargetRectangle selects targets in a rectangular area.
+	// TargetRectangle 矩形范围目标。
 	TargetRectangle
 )
 
-// InterruptPolicy defines what happens when a skill cast is interrupted.
+// InterruptPolicy 定义技能施法被打断时的处理方式。
 type InterruptPolicy int
 
 const (
-	// InterruptCancel cancels remaining skill phases.
+	// InterruptCancel 取消剩余技能阶段。
 	InterruptCancel InterruptPolicy = iota
-	// InterruptContinue continues executing remaining phases.
+	// InterruptContinue 继续执行剩余技能阶段。
 	InterruptContinue
 )
 
-// SkillPhase represents a phase in the skill execution pipeline.
+// SkillPhase 表示技能执行流水线中的一个阶段。
 type SkillPhase int
 
 const (
-	// SkillPhaseWindup is the wind-up (cast) phase.
+	// SkillPhaseWindup 前摇（施法）阶段。
 	SkillPhaseWindup SkillPhase = iota
-	// SkillPhaseHit is the hit-detection phase.
+	// SkillPhaseHit 命中检测阶段。
 	SkillPhaseHit
-	// SkillPhaseSettle is the damage-settlement phase.
+	// SkillPhaseSettle 伤害结算阶段。
 	SkillPhaseSettle
-	// SkillPhaseRecovery is the recovery (cooldown) phase.
+	// SkillPhaseRecovery 后摇（冷却）阶段。
 	SkillPhaseRecovery
 )
 
-// OperationCode is a single-byte code representing a player operation
-// in the compact codec protocol.
+// OperationCode 是紧凑编解码协议中表示玩家操作的单字节码。
 type OperationCode byte
 
 const (
-	// OpMoveUp moves the entity upward.
+	// OpMoveUp 实体向上移动。
 	OpMoveUp OperationCode = 'u'
-	// OpMoveDown moves the entity downward.
+	// OpMoveDown 实体向下移动。
 	OpMoveDown OperationCode = 'd'
-	// OpMoveLeft moves the entity to the left.
+	// OpMoveLeft 实体向左移动。
 	OpMoveLeft OperationCode = 'l'
-	// OpMoveRight moves the entity to the right.
+	// OpMoveRight 实体向右移动。
 	OpMoveRight OperationCode = 'r'
-	// OpAttack triggers a basic attack.
+	// OpAttack 触发普通攻击。
 	OpAttack OperationCode = 'a'
-	// OpSkill triggers a skill cast.
+	// OpSkill 触发技能释放。
 	OpSkill OperationCode = 's'
-	// OpInteract triggers an interaction.
+	// OpInteract 触发交互操作。
 	OpInteract OperationCode = 'i'
-	// OpChat sends a chat message.
+	// OpChat 发送聊天消息。
 	OpChat OperationCode = 'c'
 )
 
-// MigrationPhase tracks the progress of an entity migration between Rooms.
+// MigrationPhase 追踪实体在房间间迁移的进度。
 type MigrationPhase int
 
 const (
-	// MigrationPrepare snapshots entity data before transfer.
+	// MigrationPrepare 迁移前快照实体数据。
 	MigrationPrepare MigrationPhase = iota
-	// MigrationTransfer creates the entity in the target Room.
+	// MigrationTransfer 在目标房间创建实体。
 	MigrationTransfer
-	// MigrationConfirm waits for the target Room to acknowledge receipt.
+	// MigrationConfirm 等待目标房间确认接收。
 	MigrationConfirm
-	// MigrationCleanup removes the entity from the source Room.
+	// MigrationCleanup 从源房间移除实体。
 	MigrationCleanup
-	// MigrationComplete indicates the migration finished successfully.
+	// MigrationComplete 迁移成功完成。
 	MigrationComplete
 )
