@@ -7,7 +7,7 @@ import (
 	"gfgame/internal/engine"
 )
 
-// AOIBoundaryZone defines the boundary region between two AOI managers.
+// AOIBoundaryZone 定义两个 AOI 管理器之间的边界区域。
 type AOIBoundaryZone struct {
 	LocalMin  engine.Vector3 // 本地边界区域最小坐标
 	LocalMax  engine.Vector3 // 本地边界区域最大坐标
@@ -15,22 +15,22 @@ type AOIBoundaryZone struct {
 	RemoteMax engine.Vector3 // 远端边界区域最大坐标
 }
 
-// CrossBoundaryEntity holds information about an entity visible across boundaries.
+// CrossBoundaryEntity 保存跨边界可见实体的信息。
 type CrossBoundaryEntity struct {
 	EntityID engine.EntityID
-	SourceID string        // 来源 AOI_Manager 标识（本地为空，跨边界为 neighborID）
+	SourceID string         // 来源 AOI 管理器标识（本地为空，跨边界为 neighborID）
 	Position engine.Vector3
 }
 
-// OcclusionData holds height map and layer info for occlusion calculations.
+// OcclusionData 保存用于遮挡计算的高度图和层级信息。
 type OcclusionData struct {
-	HeightMap  [][]float32 // 2D height map indexed by [z][x]
-	LayerIndex int         // which layer this data belongs to
+	HeightMap  [][]float32 // 二维高度图，索引为 [z][x]
+	LayerIndex int         // 该数据所属的地图层级
 }
 
-// AOIManager manages Area of Interest for entities in a scene.
-// It tracks entity positions via a SpatialIndex and maintains per-entity
-// visible entity lists, firing enter/leave view callbacks on changes.
+// AOIManager 管理场景中实体的兴趣区域（AOI）。
+// 通过 SpatialIndex 跟踪实体位置，维护每个实体的可见实体列表，
+// 并在可见性变化时触发进入/离开视野回调。
 type AOIManager interface {
 	Add(entityID engine.EntityID, pos engine.Vector3, aoiRadius float32)
 	Remove(entityID engine.EntityID)
@@ -39,32 +39,32 @@ type AOIManager interface {
 	SetAOIRadius(entityID engine.EntityID, radius float32)
 	OnEnterView(handler func(watcher, target engine.EntityID))
 	OnLeaveView(handler func(watcher, target engine.EntityID))
-	// Cross-boundary AOI support
+	// 跨边界 AOI 支持
 	RegisterNeighborAOI(neighborID string, neighbor AOIManager, boundaryZone *AOIBoundaryZone)
 	UnregisterNeighborAOI(neighborID string)
 	GetCrossBoundaryVisibleEntities(entityID engine.EntityID) []CrossBoundaryEntity
 	GetBoundaryEntities(neighborID string) []engine.EntityID
-	// Occlusion support
+	// 遮挡支持
 	SetOcclusionData(data *OcclusionData)
 	SetEntityLayer(entityID engine.EntityID, layerIndex int)
 	IsOccluded(watcher, target engine.EntityID) bool
 }
 
-// aoiEntity stores per-entity AOI state.
+// aoiEntity 存储每个实体的 AOI 状态。
 type aoiEntity struct {
 	pos        engine.Vector3
 	radius     float32
-	visible    map[engine.EntityID]struct{} // current visible set
-	layerIndex int                          // map layer index for occlusion
+	visible    map[engine.EntityID]struct{} // 当前可见集合
+	layerIndex int                          // 地图层级索引，用于遮挡计算
 }
 
-// neighborInfo stores a registered neighbor AOI manager and its boundary zone.
+// neighborInfo 存储已注册的邻居 AOI 管理器及其边界区域。
 type neighborInfo struct {
 	manager      AOIManager
 	boundaryZone *AOIBoundaryZone
 }
 
-// aoiManager is the concrete implementation of AOIManager.
+// aoiManager 是 AOIManager 的具体实现。
 type aoiManager struct {
 	mu       sync.RWMutex
 	spatial  SpatialIndex
@@ -73,11 +73,11 @@ type aoiManager struct {
 	enterHandlers []func(watcher, target engine.EntityID)
 	leaveHandlers []func(watcher, target engine.EntityID)
 
-	neighbors     map[string]*neighborInfo // neighborID → neighbor info
-	occlusionData *OcclusionData           // height map for occlusion checks
+	neighbors     map[string]*neighborInfo // neighborID → 邻居信息
+	occlusionData *OcclusionData           // 用于遮挡检测的高度图
 }
 
-// NewAOIManager creates a new AOIManager backed by the given SpatialIndex.
+// NewAOIManager 创建由给定 SpatialIndex 支持的新 AOIManager。
 func NewAOIManager(spatial SpatialIndex) AOIManager {
 	return &aoiManager{
 		spatial:   spatial,
@@ -86,8 +86,8 @@ func NewAOIManager(spatial SpatialIndex) AOIManager {
 	}
 }
 
-// Add registers an entity with the AOI system at the given position and radius.
-// It inserts the entity into the spatial index and computes its initial visible set.
+// Add 在给定位置和半径处向 AOI 系统注册实体。
+// 将实体插入空间索引并计算其初始可见集合。
 func (m *aoiManager) Add(entityID engine.EntityID, pos engine.Vector3, aoiRadius float32) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

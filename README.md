@@ -85,6 +85,17 @@ gfgame/
 
 4. 前端通过 WebSocket 接入，协议格式参见 `proto/protocol.md`，TypeScript SDK 位于 `sdk/client.ts`。
 
+#### 修罗斗场 Demo
+
+多人实时对战演示，包含注册登录、职业选择（战士/弓箭手）、装备整备、实时 PVP 战斗。数据存储使用 SQLite（可替换为 MySQL）。
+
+```bash
+cd cmd/demo
+go run .
+```
+
+浏览器访问 `http://localhost:9100`，可多开窗口模拟多人对战。
+
 #### 参与贡献
 
 1. Fork 本仓库

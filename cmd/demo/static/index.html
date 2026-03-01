@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>修罗斗场 - 多人对战 Demo</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- 登录/注册页 -->
+  <div id="page-auth" class="page active">
+    <div class="auth-box">
+      <h1>⚔️ 修罗斗场</h1>
+      <p class="subtitle">多人实时对战</p>
+      <div class="form-group">
+        <input id="auth-user" type="text" placeholder="用户名 (至少2字符)" maxlength="20">
+      </div>
+      <div class="form-group">
+        <input id="auth-pass" type="password" placeholder="密码 (至少3字符)" maxlength="30">
+      </div>
+      <div class="btn-row">
+        <button id="btn-login" class="btn">登录</button>
+        <button id="btn-register" class="btn btn-secondary">注册</button>
+      </div>
+      <div id="auth-msg" class="msg"></div>
+    </div>
+  </div>
+
+  <!-- 角色创建页 -->
+  <div id="page-create" class="page">
+    <div class="create-box">
+      <h2>创建角色</h2>
+      <div class="form-group">
+        <input id="char-name" type="text" placeholder="角色名称" maxlength="12">
+      </div>
+      <div class="class-select">
+        <div class="class-card selected" data-class="warrior">
+          <div class="class-icon">🗡️</div>
+          <div class="class-name">战士</div>
+          <div class="class-desc">近战高防，猛击旋风</div>
+        </div>
+        <div class="class-card" data-class="archer">
+          <div class="class-icon">🏹</div>
+          <div class="class-name">弓箭手</div>
+          <div class="class-desc">远程高暴击，灵活</div>
+        </div>
+      </div>
+      <button id="btn-create" class="btn">创建角色</button>
+      <div id="create-msg" class="msg"></div>
+    </div>
+  </div>
+
+  <!-- 整备页 -->
+  <div id="page-lobby" class="page">
+    <div class="lobby-box">
+      <div class="lobby-header">
+        <h2 id="lobby-title">整备</h2>
+        <button id="btn-enter-arena" class="btn btn-danger">⚔️ 进入修罗斗场</button>
+      </div>
+      <div class="lobby-content">
+        <div class="char-panel">
+          <h3>角色信息</h3>
+          <div id="char-stats"></div>
+        </div>
+        <div class="equip-panel">
+          <h3>装备栏</h3>
+          <div id="equip-slots"></div>
+        </div>
+        <div class="equip-list-panel">
+          <h3>可用装备</h3>
+          <div id="equip-list"></div>
+        </div>
+        <div class="skill-panel">
+          <h3>技能列表</h3>
+          <div id="skill-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 竞技场页 -->
+  <div id="page-arena" class="page">
+    <div class="arena-hud">
+      <div class="hud-left">
+        <div id="hud-hp-bar" class="hud-bar">
+          <div class="bar-fill hp-fill"></div>
+          <span class="bar-text"></span>
+        </div>
+        <div id="hud-mp-bar" class="hud-bar">
+          <div class="bar-fill mp-fill"></div>
+          <span class="bar-text"></span>
+        </div>
+      </div>
+      <div class="hud-center">
+        <span id="hud-name"></span>
+      </div>
+      <div class="hud-right">
+        <button id="btn-leave-arena" class="btn btn-small">离开</button>
+      </div>
+    </div>
+    <canvas id="arena-canvas"></canvas>
+    <div id="skill-bar"></div>
+    <div id="chat-box">
+      <div id="chat-messages"></div>
+      <div class="chat-input-row">
+        <input id="chat-input" type="text" placeholder="输入消息..." maxlength="100">
+        <button id="btn-chat-send" class="btn btn-small">发送</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/ws.js"></script>
+  <script src="js/arena.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
