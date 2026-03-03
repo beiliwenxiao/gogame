@@ -62,7 +62,9 @@ body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; ov
 
 /* 竞技场 */
 #page-arena { flex-direction: column; position: relative; }
-.arena-hud { display: flex; align-items: center; padding: 8px 16px; background: rgba(0,0,0,0.5); border-bottom: 1px solid rgba(100,100,150,0.3); z-index: 10; }
+.arena-hud { display: flex; align-items: center; padding: 8px 16px; background: transparent; border-bottom: none; z-index: 10; }
+.arena-hud .hud-left { display: none; }
+.arena-hud .hud-center { display: none; }
 .hud-left { display: flex; gap: 12px; flex: 1; align-items: center; }
 .hud-orb { position: relative; width: 50px; height: 50px; border-radius: 50%; overflow: hidden; }
 .hud-orb-bg { position: absolute; inset: 0; border-radius: 50%; }
@@ -83,7 +85,7 @@ body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; ov
 .hud-center { flex: 1; text-align: center; font-weight: bold; color: #ffd700; text-shadow: 0 0 8px rgba(255,215,0,0.3); }
 .hud-right { flex: 1; text-align: right; }
 #arena-canvas { flex: 1; display: block; background: #1a1a2e; }
-#skill-bar { display: flex; gap: 6px; padding: 8px 16px; background: rgba(0,0,0,0.5); border-top: 1px solid rgba(100,100,150,0.3); justify-content: center; z-index: 10; }
+#skill-bar { display: none; }
 .skill-btn { padding: 8px 16px; background: rgba(50,50,50,0.8); border: 1px solid #666; border-radius: 6px; color: #fff; cursor: pointer; font-size: 12px; position: relative; transition: all 0.2s; min-width: 80px; text-align: center; }
 .skill-btn:hover { background: rgba(100,100,100,0.8); border-color: #fff; }
 .skill-btn.on-cd { opacity: 0.5; cursor: not-allowed; }

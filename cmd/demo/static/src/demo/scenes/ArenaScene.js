@@ -22,7 +22,7 @@ export class ArenaScene extends BaseGameScene {
         
         // 火堆（场景正中，默认点燃）
         this.campfire = {
-            x: 400, y: 300,
+            x: 0, y: 464,
             lit: true,
             fireImage: null,
             imageLoaded: false,
@@ -117,6 +117,12 @@ export class ArenaScene extends BaseGameScene {
         }
         
         console.log('ArenaScene: 进入竞技场', this.selfId);
+        
+        // 调整 BottomControlBar：居中贴底 + 扩大槽位
+        this.setupBottomControlBar();
+        
+        // 将后端技能注入到 BottomControlBar
+        this.injectBackendSkills();
         
         // 加载火焰图片
         this.loadFireImage();
@@ -359,6 +365,13 @@ export class ArenaScene extends BaseGameScene {
         const skill = this.skills.find(s => s.id === skillId);
         if (skill) {
             this.skillCooldowns[skillId] = now + skill.cooldown * 1000;
+            
+            // 同步冷却到 combat 组件，让 BottomControlBar 显示冷却遮罩
+            const combat = this.playerEntity.getComponent('combat');
+            if (combat) {
+                const combatSkillId = `backend_${skillId}`;
+                combat.skillCooldowns.set(combatSkillId, now);
+            }
         }
     }
 
@@ -570,23 +583,38 @@ export class ArenaScene extends BaseGameScene {
      * 更新火堆动画
      */
     updateCampfireAnimation(deltaTime) {
-        if (!this.campfire || !this.campfire.lit || !this.campfire.imageLoaded) return;
-        this.campfire.frameTime += deltaTime;
-        if (this.campfire.frameTime >= this.campfire.frameDuration) {
-            this.campfire.frameTime = 0;
-            this.campfire.currentFrame = (this.campfire.currentFrame + 1) % this.campfire.frameCount;
+        if (!this.campfire) return;
+        
+        // 更新帧动画
+        if (this.campfire.lit && this.campfire.imageLoaded) {
+            this.campfire.frameTime += deltaTime;
+            if (this.campfire.frameTime >= this.campfire.frameDuration) {
+                this.campfire.frameTime = 0;
+                this.campfire.currentFrame = (this.campfire.currentFrame + 1) % this.campfire.frameCount;
+            }
         }
         
-        // 更新火焰粒子摇摆
-        if (this.campfire.emitters) {
+        // 更新火焰粒子效果
+        if (this.campfire.lit && this.campfire.emitters) {
             const time = performance.now() / 1000;
+            
             this.campfire.emitters.forEach((emitter, index) => {
                 if (emitter) {
-                    const swayAmount = Math.sin(time * (2 + index * 0.5)) * (3 + index);
+                    let swayAmount;
+                    if (index < 2) {
+                        swayAmount = (Math.random() - 0.5) * 10;
+                    } else {
+                        swayAmount = Math.sin(time * 2 + index * 0.5) * 4 + (Math.random() - 0.5) * 2;
+                    }
+                    
                     const baseX = this.campfire.x;
-                    const baseY = this.campfire.y - 15;
+                    const baseY = this.campfire.y + 2;
+                    
                     emitter.position.x = baseX + swayAmount;
-                    emitter.position.y = baseY;
+                    emitter.position.y = baseY - 15;
+                    emitter.particleConfig.velocity.x = (Math.random() - 0.5) * 10;
+                    
+                    this.particleSystem.updateEmitter(emitter, deltaTime);
                 }
             });
         }
@@ -676,6 +704,88 @@ export class ArenaScene extends BaseGameScene {
             );
             ctx.globalAlpha = 1.0;
         }
+    }
+
+    /**
+     * 调整 BottomControlBar 位置和槽位大小
+     */
+    setupBottomControlBar() {
+        if (!this.bottomControlBar) return;
+        
+        // 扩大槽位尺寸：40 -> 64
+        const slotSize = 64;
+        const slotGap = 8;
+        const totalSlots = 7;
+        const totalWidth = totalSlots * slotSize + (totalSlots - 1) * slotGap;
+        const barWidth = totalWidth + 160; // 两侧留空给血蓝球
+        const barHeight = 100;
+        
+        // 居中贴底
+        this.bottomControlBar.width = barWidth;
+        this.bottomControlBar.height = barHeight;
+        this.bottomControlBar.x = (this.logicalWidth - barWidth) / 2;
+        this.bottomControlBar.y = this.logicalHeight - barHeight;
+        
+        // 更新血蓝球位置
+        this.bottomControlBar.hpOrb.x = 60;
+        this.bottomControlBar.mpOrb.x = barWidth - 60;
+        
+        // 重新计算槽位位置
+        const startX = barWidth / 2 - totalWidth / 2 + slotSize / 2;
+        for (let i = 0; i < this.bottomControlBar.skillSlots.length; i++) {
+            const slot = this.bottomControlBar.skillSlots[i];
+            slot.x = startX + i * (slotSize + slotGap);
+            slot.size = slotSize;
+        }
+        
+        // 设置技能点击回调 - 连接到后端技能释放
+        this.bottomControlBar.onSkillClick = (skill) => {
+            if (skill && skill.backendId) {
+                this.castSkill(skill.backendId);
+            }
+        };
+    }
+
+    /**
+     * 将后端技能注入到 playerEntity 的 combat 组件
+     */
+    injectBackendSkills() {
+        if (!this.playerEntity || !this.skills || this.skills.length === 0) return;
+        
+        let combat = this.playerEntity.getComponent('combat');
+        if (!combat) return;
+        
+        // 清空现有技能
+        combat.skills = [];
+        combat.skillCooldowns = new Map();
+        
+        // 后端技能映射到 combat 组件（跳过普通攻击，只取技能）
+        const backendSkills = this.skills.filter(s => s.mp_cost > 0);
+        
+        // 技能图标映射
+        const skillIconMap = {
+            '猛击': '⚔️',
+            '旋风斩': '🌀',
+            '战吼': '📢',
+            '射击': '🏹',
+            '多重射击': '🎯',
+            '闪避': '💨'
+        };
+        
+        backendSkills.forEach(sk => {
+            combat.addSkill({
+                id: `backend_${sk.id}`,
+                backendId: sk.id,
+                name: sk.name,
+                cooldown: sk.cooldown,
+                manaCost: sk.mp_cost,
+                effectType: sk.name, // 用名字做 effectType
+                castTime: 0,
+                icon: skillIconMap[sk.name] || '⚡'
+            });
+        });
+        
+        console.log('ArenaScene: 注入后端技能', backendSkills.map(s => s.name));
     }
 
     /**

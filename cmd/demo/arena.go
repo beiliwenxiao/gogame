@@ -68,8 +68,8 @@ func (s *DemoServer) handleEnterArena(session *PlayerSession) {
 	}
 	total, _ := s.db.CalcTotalStats(ch)
 	angle := rand.Float64() * 2 * math.Pi
-	dist := 100.0 + rand.Float64()*200.0
-	session.x = math.Max(30, math.Min(ArenaWidth-30, CampfireX+math.Cos(angle)*dist))
+	dist := 50.0 + rand.Float64()*100.0
+	session.x = math.Max(-ArenaWidth+30, math.Min(ArenaWidth-30, CampfireX+math.Cos(angle)*dist))
 	session.y = math.Max(30, math.Min(ArenaHeight-30, CampfireY+math.Sin(angle)*dist))
 	session.hp = total.MaxHP
 	session.maxHP = total.MaxHP
@@ -293,8 +293,8 @@ func (s *DemoServer) respawnPlayer(session *PlayerSession) {
 		return
 	}
 	angle := rand.Float64() * 2 * math.Pi
-	d := 100.0 + rand.Float64()*200.0
-	session.x = math.Max(30, math.Min(ArenaWidth-30, CampfireX+math.Cos(angle)*d))
+	d := 50.0 + rand.Float64()*100.0
+	session.x = math.Max(-ArenaWidth+30, math.Min(ArenaWidth-30, CampfireX+math.Cos(angle)*d))
 	session.y = math.Max(30, math.Min(ArenaHeight-30, CampfireY+math.Sin(angle)*d))
 	session.hp = session.maxHP
 	session.mp = session.maxMP

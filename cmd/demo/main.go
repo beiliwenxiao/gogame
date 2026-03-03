@@ -22,10 +22,10 @@ import (
 const (
 	WSAddr       = ":9100"
 	DBPath       = "demo.db"
-	ArenaWidth   = 800.0
-	ArenaHeight  = 600.0
-	CampfireX    = 400.0
-	CampfireY    = 300.0
+	ArenaWidth   = 960.0
+	ArenaHeight  = 960.0
+	CampfireX    = 0.0
+	CampfireY    = 464.0
 	TickRate     = 20 // 每秒 tick 数
 	AOIRadius    = 500.0
 )

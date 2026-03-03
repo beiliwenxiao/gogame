@@ -53,8 +53,7 @@ class ArenaRenderer {
             this.players.set(p.char_id, { ...p, targetX: p.x, targetY: p.y });
         }
 
-        // 渲染技能栏（HTML DOM）
-        this.renderSkillBar();
+        // 不再渲染 HTML 技能栏，改用引擎 BottomControlBar
 
         // 动态加载引擎模块
         try {

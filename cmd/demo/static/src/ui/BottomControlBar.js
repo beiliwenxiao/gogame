@@ -448,7 +448,25 @@ export class BottomControlBar extends UIElement {
     ctx.save();
     ctx.translate(x, y);
     
-    // 技能图标映射表（纯 emoji，简洁好看）
+    // 优先使用技能自带的 icon 属性
+    if (skill.icon) {
+      ctx.font = `${size * 0.55}px Arial`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(skill.icon, 0, 0);
+      
+      // 技能名称（小字）
+      if (skill.name) {
+        ctx.font = `${Math.max(10, size * 0.18)}px Arial`;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(skill.name, 0, halfSize - 6);
+      }
+      
+      ctx.restore();
+      return;
+    }
+    
+    // 默认图标映射表
     const iconMap = {
       'flame_palm': '🔥',
       'fireball': '🔥',
