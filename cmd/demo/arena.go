@@ -121,8 +121,8 @@ func (s *DemoServer) handleMove(session *PlayerSession, data json.RawMessage) {
 	if err := json.Unmarshal(data, &req); err != nil {
 		return
 	}
-	session.x = math.Max(-ArenaWidth+10, math.Min(ArenaWidth-10, req.X))
-	session.y = math.Max(-ArenaHeight+10, math.Min(ArenaHeight-10, req.Y))
+	session.x = math.Round(math.Max(-ArenaWidth+10, math.Min(ArenaWidth-10, req.X))*10) / 10
+	session.y = math.Round(math.Max(-ArenaHeight+10, math.Min(ArenaHeight-10, req.Y))*10) / 10
 	if req.Direction != "" {
 		session.direction = req.Direction
 	}
@@ -305,4 +305,114 @@ func (s *DemoServer) respawnPlayer(session *PlayerSession) {
 		"hp": session.hp, "max_hp": session.maxHP, "mp": session.mp, "max_mp": session.maxMP,
 	}})
 	log.Printf("玩家 %s 已复活", session.charName)
+}
+
+// arenaTick 竞技场状态同步 tick 循环
+// 每 1/TickRate 秒广播一次全量玩家状态，确保多端一致
+func (s *DemoServer) arenaTick() {
+	ticker := time.NewTicker(time.Second / StateSyncHz)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		s.arena.mu.RLock()
+		n := len(s.arena.players)
+		if n == 0 {
+			s.arena.mu.RUnlock()
+			continue
+		}
+
+		// 收集所有玩家列表
+		allPlayers := make([]*PlayerSession, 0, n)
+		for _, p := range s.arena.players {
+			allPlayers = append(allPlayers, p)
+		}
+		s.arena.mu.RUnlock()
+
+		// 给每个接收者单独计算增量
+		for _, receiver := range allPlayers {
+			if receiver.lastSync == nil {
+				receiver.lastSync = make(map[int64]*playerSnapshot)
+			}
+
+			changed := make([]map[string]interface{}, 0)
+			currentIds := make(map[int64]bool)
+
+			for _, p := range allPlayers {
+				currentIds[p.charID] = true
+				snap := receiver.lastSync[p.charID]
+
+				// 构建增量数据
+				diff := map[string]interface{}{
+					"char_id": p.charID,
+				}
+				hasDiff := false
+
+				if snap == nil {
+					// 新玩家，发送全量
+					diff["name"] = p.charName
+					diff["class"] = p.charClass
+					diff["x"] = p.x
+					diff["y"] = p.y
+					diff["hp"] = p.hp
+					diff["max_hp"] = p.maxHP
+					diff["mp"] = p.mp
+					diff["max_mp"] = p.maxMP
+					diff["dead"] = p.dead
+					diff["direction"] = p.direction
+					hasDiff = true
+				} else {
+					// 只发送变化的字段
+					if math.Abs(snap.x-p.x) > 0.1 || math.Abs(snap.y-p.y) > 0.1 {
+						diff["x"] = p.x
+						diff["y"] = p.y
+						hasDiff = true
+					}
+					if snap.hp != p.hp || snap.maxHP != p.maxHP {
+						diff["hp"] = p.hp
+						diff["max_hp"] = p.maxHP
+						hasDiff = true
+					}
+					if snap.mp != p.mp || snap.maxMP != p.maxMP {
+						diff["mp"] = p.mp
+						diff["max_mp"] = p.maxMP
+						hasDiff = true
+					}
+					if snap.dead != p.dead {
+						diff["dead"] = p.dead
+						hasDiff = true
+					}
+					if snap.direction != p.direction {
+						diff["direction"] = p.direction
+						hasDiff = true
+					}
+				}
+
+				if hasDiff {
+					changed = append(changed, diff)
+				}
+
+				// 更新快照
+				receiver.lastSync[p.charID] = &playerSnapshot{
+					x: p.x, y: p.y,
+					hp: p.hp, maxHP: p.maxHP,
+					mp: p.mp, maxMP: p.maxMP,
+					dead: p.dead, direction: p.direction,
+				}
+			}
+
+			// 清理已离开的玩家快照
+			for id := range receiver.lastSync {
+				if !currentIds[id] {
+					delete(receiver.lastSync, id)
+				}
+			}
+
+			// 有变化才发送
+			if len(changed) > 0 {
+				receiver.Send(ServerMessage{Type: MsgStateSync, Data: map[string]interface{}{
+					"players": changed,
+				}})
+			}
+		}
+	}
 }

@@ -278,6 +278,30 @@ class ArenaRenderer {
         this.updateHUD(this.players.get(this.selfId));
     }
 
+    onStateSync(data) {
+        if (!data || !data.players) return;
+        // 增量更新 players Map
+        for (const p of data.players) {
+            const existing = this.players.get(p.char_id);
+            if (existing) {
+                Object.assign(existing, p);
+                if (p.x !== undefined) existing.targetX = p.x;
+                if (p.y !== undefined) existing.targetY = p.y;
+            } else if (p.name) {
+                // 新玩家（有 name 字段说明是全量数据）
+                this.players.set(p.char_id, { ...p, targetX: p.x, targetY: p.y });
+            }
+        }
+        // 注意：增量同步不再移除玩家，玩家离开由 player_left 事件处理
+        // 委托给引擎场景
+        if (this.engineReady && this.arenaScene) {
+            this.arenaScene.onStateSync(data);
+        }
+        // 更新 HUD
+        const self = this.players.get(this.selfId);
+        if (self) this.updateHUD(self);
+    }
+
     // ===== HUD 更新（复用原有 DOM） =====
 
     updateHUD(self) {

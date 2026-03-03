@@ -26,7 +26,8 @@ const (
 	ArenaHeight  = 960.0
 	CampfireX    = 0.0
 	CampfireY    = 464.0
-	TickRate     = 20 // 每秒 tick 数
+	TickRate     = 30 // 每秒 tick 数（移动同步用）
+	StateSyncHz  = 5  // 状态同步频率（HP/MP/死亡等）
 	AOIRadius    = 500.0
 )
 
@@ -65,6 +66,7 @@ const (
 	MsgChatMsg        = "chat_msg"
 	MsgCharInfo       = "char_info"
 	MsgEquipList      = "equip_list"
+	MsgStateSync      = "state_sync"
 	MsgError          = "error"
 )
 
@@ -102,6 +104,18 @@ type PlayerSession struct {
 	level     int
 	dead      bool
 	direction string // "up","down","left","right"
+
+	// 增量同步：上次发送的快照（每个接收者独立）
+	lastSync map[int64]*playerSnapshot
+}
+
+// playerSnapshot 记录上次同步给某个客户端的玩家状态
+type playerSnapshot struct {
+	x, y      float64
+	hp, maxHP float64
+	mp, maxMP float64
+	dead      bool
+	direction string
 }
 
 func (ps *PlayerSession) Send(msg ServerMessage) {
@@ -112,7 +126,10 @@ func (ps *PlayerSession) Send(msg ServerMessage) {
 		log.Printf("序列化消息失败: %v", err)
 		return
 	}
-	log.Printf("发送消息: type=%s, len=%d", msg.Type, len(data))
+	// 过滤高频 state_sync 日志，避免 I/O 阻塞
+	if msg.Type != MsgStateSync && msg.Type != MsgPlayerMoved {
+		log.Printf("发送消息: type=%s, len=%d", msg.Type, len(data))
+	}
 	if err := ps.conn.WriteMessage(websocket.TextMessage, data); err != nil {
 		log.Printf("发送消息失败: %v", err)
 	}
@@ -170,6 +187,9 @@ func (s *DemoServer) Start() error {
 
 	// 静态文件服务
 	mux.Handle("/", http.FileServer(http.Dir("static")))
+
+	// 启动竞技场 tick 循环（状态同步）
+	go s.arenaTick()
 
 	log.Printf("Demo 服务器启动在 %s", WSAddr)
 	return http.ListenAndServe(WSAddr, mux)

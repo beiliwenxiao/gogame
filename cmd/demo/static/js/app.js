@@ -174,6 +174,7 @@ function bindWSHandlers() {
   ws.on('player_died', (data) => arena.onPlayerDied(data));
   ws.on('player_respawn', (data) => arena.onPlayerRespawn(data));
   ws.on('skill_casted', (data) => arena.onSkillCasted(data));
+  ws.on('state_sync', (data) => arena.onStateSync(data));
 
   ws.on('chat_msg', (data) => {
     const box = document.getElementById('chat-messages');

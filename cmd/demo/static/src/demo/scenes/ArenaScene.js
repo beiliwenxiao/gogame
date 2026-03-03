@@ -38,7 +38,7 @@ export class ArenaScene extends BaseGameScene {
         
         // 网络同步
         this.lastMoveTime = 0;
-        this.moveInterval = 50; // ms
+        this.moveInterval = 30; // ms
         
         // WebSocket 引用（由外部注入）
         this.ws = null;
@@ -51,6 +51,16 @@ export class ArenaScene extends BaseGameScene {
         
         // 覆盖 canvas ID（使用 engineCanvas 而非 gameCanvas）
         this.canvasId = 'engineCanvas';
+        
+        // 方向映射：引擎8方向 <-> 网络简写
+        this._dirToNet = {
+            'up': 'u', 'down': 'd', 'left': 'l', 'right': 'r',
+            'up-left': 'ul', 'up-right': 'ur', 'down-left': 'dl', 'down-right': 'dr'
+        };
+        this._netToDir = {
+            'u': 'up', 'd': 'down', 'l': 'left', 'r': 'right',
+            'ul': 'up-left', 'ur': 'up-right', 'dl': 'down-left', 'dr': 'down-right'
+        };
     }
 
     /**
@@ -266,15 +276,27 @@ export class ArenaScene extends BaseGameScene {
                     const dy = entity.targetY - transform.position.y;
                     const dist = Math.sqrt(dx * dx + dy * dy);
                     
-                    transform.position.x += dx * 0.3;
-                    transform.position.y += dy * 0.3;
+                    // 基于 deltaTime 的平滑插值，距离太远则瞬移，很近则snap
+                    if (dist > 300) {
+                        transform.position.x = entity.targetX;
+                        transform.position.y = entity.targetY;
+                    } else if (dist < 1) {
+                        // 距离很近，直接到位，避免漂移
+                        transform.position.x = entity.targetX;
+                        transform.position.y = entity.targetY;
+                    } else {
+                        const lerp = 1 - Math.pow(0.9, deltaTime * 60);
+                        transform.position.x += dx * lerp;
+                        transform.position.y += dy * lerp;
+                    }
                     
-                    // 根据距离判断是否在移动，切换行走/待机动画
+                    // 根据最近收到移动消息的时间判断行走状态
                     const sprite = entity.getComponent('sprite');
                     if (sprite) {
-                        if (dist > 2) {
+                        const timeSinceMove = Date.now() - (entity._lastMoveTime || 0);
+                        if (dist > 2 && timeSinceMove < 200) {
                             sprite.isWalking = true;
-                        } else {
+                        } else if (dist <= 2 || timeSinceMove >= 200) {
                             sprite.isWalking = false;
                         }
                     }
@@ -300,34 +322,53 @@ export class ArenaScene extends BaseGameScene {
      * 发送移动数据到服务端
      */
     sendMovement() {
-        if (!this.ws || !this.playerEntity) return;
-        
-        const now = Date.now();
-        if (now - this.lastMoveTime < this.moveInterval) return;
-        
-        const transform = this.playerEntity.getComponent('transform');
-        if (!transform) return;
-        
-        // 检测是否有移动输入
-        if (!this.inputManager) return;
-        const hasInput = this.inputManager.isKeyDown('w') || this.inputManager.isKeyDown('s') ||
-                         this.inputManager.isKeyDown('a') || this.inputManager.isKeyDown('d') ||
-                         this.inputManager.isKeyDown('arrowup') || this.inputManager.isKeyDown('arrowdown') ||
-                         this.inputManager.isKeyDown('arrowleft') || this.inputManager.isKeyDown('arrowright');
-        
-        if (hasInput) {
-            // 使用精灵组件的当前方向（由 MovementSystem 计算的8方向）
-            const sprite = this.playerEntity.getComponent('sprite');
-            const direction = (sprite && sprite.direction) ? sprite.direction : 'down';
-            
-            this.ws.send('move', {
-                x: transform.position.x,
-                y: transform.position.y,
-                direction: direction
-            });
-            this.lastMoveTime = now;
+            if (!this.ws || !this.playerEntity) return;
+
+            const now = Date.now();
+            if (now - this.lastMoveTime < this.moveInterval) return;
+
+            const transform = this.playerEntity.getComponent('transform');
+            if (!transform) return;
+
+            const x = Math.round(transform.position.x * 10) / 10;
+            const y = Math.round(transform.position.y * 10) / 10;
+
+            // 基于位置变化检测移动（兼容键盘和鼠标点击移动）
+            const dx = x - (this._lastSentX || 0);
+            const dy = y - (this._lastSentY || 0);
+            const moved = Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5;
+
+            if (moved) {
+                const sprite = this.playerEntity.getComponent('sprite');
+                const engineDir = (sprite && sprite.direction) ? sprite.direction : 'down';
+                const direction = this._dirToNet[engineDir] || 'd';
+
+                this.ws.send('move', {
+                    x: x,
+                    y: y,
+                    direction: direction
+                });
+                this._lastSentX = x;
+                this._lastSentY = y;
+                this.lastMoveTime = now;
+                this._wasMoving = true;
+            } else if (this._wasMoving) {
+                // 停止移动时发送最终位置
+                const sprite = this.playerEntity.getComponent('sprite');
+                const engineDir = (sprite && sprite.direction) ? sprite.direction : 'down';
+                const direction = this._dirToNet[engineDir] || 'd';
+                this.ws.send('move', {
+                    x: x,
+                    y: y,
+                    direction: direction
+                });
+                this._lastSentX = x;
+                this._lastSentY = y;
+                this._wasMoving = false;
+                this.lastMoveTime = now;
+            }
         }
-    }
+
 
     /**
      * 攻击选中目标
@@ -399,21 +440,23 @@ export class ArenaScene extends BaseGameScene {
     }
 
     onPlayerMoved(data) {
-            const entity = this.remotePlayers.get(data.char_id);
-            if (!entity) return;
+        const entity = this.remotePlayers.get(data.char_id);
+        if (!entity) return;
 
-            entity.targetX = data.x;
-            entity.targetY = data.y;
+        entity.targetX = data.x;
+        entity.targetY = data.y;
 
-            // 同步方向到精灵组件
+        // 同步方向到精灵组件（网络简写 -> 引擎方向），并标记行走状态
+        const sprite = entity.getComponent('sprite');
+        if (sprite) {
             if (data.direction) {
-                const sprite = entity.getComponent('sprite');
-                if (sprite) {
-                    sprite.direction = data.direction;
-                    sprite.isWalking = true;
-                }
+                sprite.direction = this._netToDir[data.direction] || data.direction;
             }
+            sprite.isWalking = true;
         }
+        // 记录收到移动的时间，用于停止行走判断
+        entity._lastMoveTime = Date.now();
+    }
 
 
     onDamage(data) {
@@ -500,6 +543,68 @@ export class ArenaScene extends BaseGameScene {
         if (this.floatingTextManager) {
             this.floatingTextManager.addText(data.x, data.y, `${data.name} 复活了`, '#00ff00');
         }
+    }
+
+    onStateSync(data) {
+        if (!data || !data.players) return;
+        const serverIds = new Set();
+
+        for (const p of data.players) {
+            serverIds.add(p.char_id);
+
+            if (p.char_id === this.selfId) {
+                // 自己：只同步 HP/MP（位置由本地控制）
+                if (this.playerEntity) {
+                    const stats = this.playerEntity.getComponent('stats');
+                    if (stats) {
+                        if (p.hp !== undefined) stats.hp = p.hp;
+                        if (p.max_hp !== undefined) stats.maxHp = p.max_hp;
+                        if (p.mp !== undefined) stats.mp = p.mp;
+                        if (p.max_mp !== undefined) stats.maxMp = p.max_mp;
+                    }
+                    if (p.dead !== undefined) {
+                        if (p.dead && !this.playerEntity.dead) {
+                            this.playerEntity.dead = true;
+                            const sprite = this.playerEntity.getComponent('sprite');
+                            if (sprite) { sprite.alpha = 0.3; sprite.isWalking = false; }
+                        } else if (!p.dead && this.playerEntity.dead) {
+                            this.playerEntity.dead = false;
+                            const sprite = this.playerEntity.getComponent('sprite');
+                            if (sprite) sprite.alpha = 1.0;
+                        }
+                    }
+                }
+                continue;
+            }
+
+            // 远程玩家
+            const entity = this.remotePlayers.get(p.char_id);
+            if (entity) {
+                if (p.x !== undefined) entity.targetX = p.x;
+                if (p.y !== undefined) entity.targetY = p.y;
+                if (p.dead !== undefined) entity.dead = p.dead;
+                const sprite = entity.getComponent('sprite');
+                if (sprite) {
+                    if (p.direction) sprite.direction = this._netToDir[p.direction] || p.direction;
+                    if (p.dead !== undefined) {
+                        sprite.alpha = p.dead ? 0.3 : 1.0;
+                        if (p.dead) sprite.isWalking = false;
+                    }
+                }
+                const stats = entity.getComponent('stats');
+                if (stats) {
+                    if (p.hp !== undefined) stats.hp = p.hp;
+                    if (p.max_hp !== undefined) stats.maxHp = p.max_hp;
+                    if (p.mp !== undefined) stats.mp = p.mp;
+                    if (p.max_mp !== undefined) stats.maxMp = p.max_mp;
+                }
+            } else if (p.name) {
+                // 新玩家（有 name 字段说明是全量数据），添加到场景
+                this.addRemotePlayer(p);
+            }
+        }
+
+        // 玩家离开由 player_left 事件处理，增量同步不移除
     }
 
     onSkillCasted(data) {

@@ -6,7 +6,10 @@ import (
 	"log"
 )
 func (s *DemoServer) handleMessage(session *PlayerSession, msg ClientMessage) {
-	log.Printf("收到消息: type=%s", msg.Type)
+	// 过滤高频 move 消息日志
+	if msg.Type != MsgMove {
+		log.Printf("收到消息: type=%s", msg.Type)
+	}
 	switch msg.Type {
 	case MsgRegister:
 		s.handleRegister(session, msg.Data)

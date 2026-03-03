@@ -27,7 +27,10 @@ class WS {
       this.conn.onmessage = (e) => {
         try {
           const msg = JSON.parse(e.data);
-          console.log('收到服务端消息:', msg.type, msg.data);
+          // 过滤高频状态同步消息，避免刷屏
+          if (msg.type !== 'state_sync') {
+            console.log('收到服务端消息:', msg.type, msg.data);
+          }
           this.emit(msg.type, msg.data);
         } catch (err) {
           console.error('消息解析失败', err, e.data);
@@ -42,7 +45,10 @@ class WS {
       return;
     }
     const payload = JSON.stringify({ type, data });
-    console.log('发送:', payload);
+    // 过滤高频移动消息，避免刷屏
+    if (type !== 'move') {
+      console.log('发送:', payload);
+    }
     this.conn.send(payload);
   }
 

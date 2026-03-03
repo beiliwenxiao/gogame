@@ -2145,12 +2145,6 @@ export class BaseGameScene extends PrologueScene {
             console.log(`【精灵调试】图片尺寸: ${image.width}x${image.height}, 列数: ${sprite.spriteColumns}, 行数: ${sprite.spriteRows}, 单元格: ${cellW}x${cellH}`);
             this._debugSpriteLogged = true;
           }
-          // 每次方向变化时输出
-          if (this._lastDebugDir !== sprite.direction) {
-            const dbgFrame = sprite.getAnimatedFrame();
-            console.log(`【方向调试】方向: ${sprite.direction} → 行: ${dbgFrame.row}, 列: ${dbgFrame.col}`);
-            this._lastDebugDir = sprite.direction;
-          }
           // 获取当前帧的行和列
           const frameInfo = sprite.getAnimatedFrame();
           const row = frameInfo.row;
