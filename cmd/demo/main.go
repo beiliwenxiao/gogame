@@ -101,6 +101,8 @@ type PlayerSession struct {
 	attack    float64
 	defense   float64
 	speed     float64
+	critRate  float64
+	critDmg   float64
 	level     int
 	dead      bool
 	direction string // "up","down","left","right"
@@ -114,6 +116,10 @@ type playerSnapshot struct {
 	x, y      float64
 	hp, maxHP float64
 	mp, maxMP float64
+	attack    float64
+	defense   float64
+	critRate  float64
+	critDmg   float64
 	dead      bool
 	direction string
 }

@@ -61,6 +61,8 @@ export class EntityFactory {
       attack: stats.attack || 10,
       defense: stats.defense || 5,
       speed: stats.speed || 100,
+      critRate: stats.critRate || 0.1,       // 对齐后端 CombatAttributeComponent.CritRate
+      critDamage: stats.critDamage || 1.5,   // 对齐后端 CombatAttributeComponent.CritDamage
       level: characterData.level || 1,
       exp: characterData.exp || 0,
       mainElement: stats.mainElement || 0,
@@ -100,7 +102,8 @@ export class EntityFactory {
     // 添加战斗组件
     const combat = new CombatComponent({
       attackRange: 50,
-      attackCooldown: 1000
+      attackCooldown: 1000,
+      faction: 'ally'  // 对齐后端阵营系统
     });
     
     // 添加技能
@@ -165,6 +168,8 @@ export class EntityFactory {
       attack: stats.attack || 5,
       defense: stats.defense || 2,
       speed: stats.speed || 80,
+      critRate: stats.critRate || 0.05,      // 敌人默认5%暴击率
+      critDamage: stats.critDamage || 1.5,
       level: enemyData.level || 1,
       exp: 0,
       mainElement: stats.mainElement || 0,
@@ -205,7 +210,8 @@ export class EntityFactory {
     // 添加战斗组件
     const combat = new CombatComponent({
       attackRange: 40,
-      attackCooldown: 1500
+      attackCooldown: 1500,
+      faction: 'enemy'  // 对齐后端阵营系统
     });
     entity.addComponent(combat);
     

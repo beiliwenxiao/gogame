@@ -6,6 +6,7 @@
 import { BaseGameScene } from '../../prologue/scenes/BaseGameScene.js';
 import { EntityFactory } from '../../ecs/EntityFactory.js';
 import { NameComponent } from '../../ecs/components/NameComponent.js';
+import { calcDamage, applyCrit, SKILL_PHASE, TARGET_MODE_FROM_STRING } from '../../ecs/ComponentTypes.js';
 
 export class ArenaScene extends BaseGameScene {
     constructor() {
@@ -185,6 +186,9 @@ export class ArenaScene extends BaseGameScene {
             stats.defense = serverData.defense;
             stats.speed = serverData.speed;
             stats.level = serverData.level;
+            // 同步暴击属性（对齐后端 CombatAttributeComponent）
+            if (serverData.crit_rate !== undefined) stats.critRate = serverData.crit_rate;
+            if (serverData.crit_damage !== undefined) stats.critDamage = serverData.crit_damage;
         }
         
         const nameComp = this.playerEntity.getComponent('name');
@@ -214,7 +218,9 @@ export class ArenaScene extends BaseGameScene {
                 maxHp: serverData.max_hp,
                 attack: serverData.attack,
                 defense: serverData.defense,
-                speed: serverData.speed
+                speed: serverData.speed,
+                critRate: serverData.crit_rate || 0.1,
+                critDamage: serverData.crit_damage || 1.5
             }
         });
         
@@ -224,6 +230,13 @@ export class ArenaScene extends BaseGameScene {
             stats.hp = serverData.hp;
             stats.mp = serverData.mp;
             stats.maxMp = serverData.max_mp;
+        }
+        
+        // 竞技场中远程玩家设为敌对阵营（对齐后端阵营判定）
+        entity.faction = 'enemy';
+        const combat = entity.getComponent('combat');
+        if (combat) {
+            combat.faction = 'enemy';
         }
         
         // 标记为远程玩家
@@ -373,15 +386,55 @@ export class ArenaScene extends BaseGameScene {
     /**
      * 攻击选中目标
      */
+    /**
+     * 攻击目标 - 使用与后端一致的伤害公式进行前端预判
+     * 后端公式：base = attack - defense*0.5, min 1, variance 0.85~1.15
+     * 暴击率：普攻10%, 技能15%, 暴击倍率1.5x
+     */
     attackTarget() {
         if (!this.selectedTarget || !this.ws) return;
         const entity = this.remotePlayers.get(this.selectedTarget);
         if (!entity || entity.dead) return;
+        
+        // 前端范围预判（对齐后端 handleAttack 的距离检查）
+        if (this.playerEntity) {
+            const selfTransform = this.playerEntity.getComponent('transform');
+            const targetTransform = entity.getComponent('transform');
+            const combat = this.playerEntity.getComponent('combat');
+            if (selfTransform && targetTransform && combat) {
+                const selfStats = this.playerEntity.getComponent('stats');
+                const charClass = this.playerEntity.class || 'warrior';
+                const maxRange = charClass === 'archer' ? 200 : 60;
+                
+                if (!combat.isInSkillRange(
+                    selfTransform.position,
+                    targetTransform.position,
+                    { range: maxRange, area_type: 'single' }
+                )) {
+                    // 超出范围，不发送请求
+                    if (this.floatingTextManager && selfStats) {
+                        this.floatingTextManager.addText(
+                            selfTransform.position.x,
+                            selfTransform.position.y - 20,
+                            '超出攻击范围',
+                            '#ff6600'
+                        );
+                    }
+                    return;
+                }
+            }
+        }
+        
         this.ws.send('attack', { target_id: this.selectedTarget });
     }
 
     /**
      * 释放技能
+     */
+    /**
+     * 释放技能 - 对齐后端 handleCastSkill 的逻辑
+     * 前端预判：范围检查、MP检查、冷却检查
+     * 服务端权威：伤害计算、目标选择、状态变更
      */
     castSkill(skillId) {
         if (!this.ws || !this.playerEntity) return;
@@ -392,6 +445,23 @@ export class ArenaScene extends BaseGameScene {
         
         const transform = this.playerEntity.getComponent('transform');
         if (!transform) return;
+        
+        // 前端 MP 预判（对齐后端 handleCastSkill 的 MP 检查）
+        const skill = this.skills.find(s => s.id === skillId);
+        if (skill) {
+            const stats = this.playerEntity.getComponent('stats');
+            if (stats && skill.mp_cost > 0 && stats.mp < skill.mp_cost) {
+                if (this.floatingTextManager) {
+                    this.floatingTextManager.addText(
+                        transform.position.x,
+                        transform.position.y - 20,
+                        'MP不足',
+                        '#6699ff'
+                    );
+                }
+                return;
+            }
+        }
         
         let targetX = transform.position.x;
         let targetY = transform.position.y;
@@ -406,6 +476,26 @@ export class ArenaScene extends BaseGameScene {
                     targetY = tTransform.position.y;
                 }
                 targetId = this.selectedTarget;
+                
+                // 前端范围预判（对齐后端距离检查）
+                if (skill) {
+                    const combat = this.playerEntity.getComponent('combat');
+                    if (combat && !combat.isInSkillRange(
+                        transform.position,
+                        { x: targetX, y: targetY },
+                        skill
+                    )) {
+                        if (this.floatingTextManager) {
+                            this.floatingTextManager.addText(
+                                transform.position.x,
+                                transform.position.y - 20,
+                                '超出技能范围',
+                                '#ff6600'
+                            );
+                        }
+                        return;
+                    }
+                }
             }
         }
         
@@ -416,7 +506,6 @@ export class ArenaScene extends BaseGameScene {
             target_y: targetY
         });
         
-        const skill = this.skills.find(s => s.id === skillId);
         if (skill) {
             this.skillCooldowns[skillId] = now + skill.cooldown * 1000;
             
@@ -425,6 +514,17 @@ export class ArenaScene extends BaseGameScene {
             if (combat) {
                 const combatSkillId = `backend_${skillId}`;
                 combat.skillCooldowns.set(combatSkillId, now);
+                
+                // 启动技能阶段流水线（前端视觉反馈）
+                combat.startSkillPipeline({
+                    ...skill,
+                    phaseDurations: {
+                        windup: 100,
+                        hit: 50,
+                        settle: 50,
+                        recovery: 200
+                    }
+                });
             }
         }
     }
@@ -459,8 +559,13 @@ export class ArenaScene extends BaseGameScene {
     }
 
 
+    /**
+     * 处理伤害事件 - 服务端权威伤害结果
+     * 后端伤害公式：base = attack - defense*0.5, variance 0.85~1.15
+     * 暴击：普攻10%/技能15%, 倍率1.5x
+     */
     onDamage(data) {
-        // 更新目标 HP
+        // 更新目标 HP（服务端权威值）
         const targetEntity = data.target_id === this.selfId
             ? this.playerEntity
             : this.remotePlayers.get(data.target_id);
@@ -472,11 +577,25 @@ export class ArenaScene extends BaseGameScene {
                 stats.maxHp = data.target_max_hp;
             }
             
-            // 浮动伤害文字
+            // 浮动伤害文字（区分普攻/技能/暴击）
             const transform = targetEntity.getComponent('transform');
             if (transform && this.floatingTextManager) {
-                const color = data.is_crit ? '#ffd700' : '#ff0000';
-                const text = data.is_crit ? `暴击! ${Math.round(data.damage)}` : `${Math.round(data.damage)}`;
+                let color = '#ff0000';
+                let text = `${Math.round(data.damage)}`;
+                
+                if (data.is_crit) {
+                    color = '#ffd700';
+                    text = `暴击! ${Math.round(data.damage)}`;
+                }
+                
+                // 技能伤害用不同颜色
+                if (data.skill_name) {
+                    color = data.is_crit ? '#ff8c00' : '#ff4500';
+                    text = data.is_crit
+                        ? `${data.skill_name} 暴击! ${Math.round(data.damage)}`
+                        : `${data.skill_name} ${Math.round(data.damage)}`;
+                }
+                
                 this.floatingTextManager.addText(
                     transform.position.x,
                     transform.position.y - 20,
@@ -553,7 +672,7 @@ export class ArenaScene extends BaseGameScene {
             serverIds.add(p.char_id);
 
             if (p.char_id === this.selfId) {
-                // 自己：只同步 HP/MP（位置由本地控制）
+                // 自己：同步 HP/MP 和战斗属性（位置由本地控制）
                 if (this.playerEntity) {
                     const stats = this.playerEntity.getComponent('stats');
                     if (stats) {
@@ -561,6 +680,10 @@ export class ArenaScene extends BaseGameScene {
                         if (p.max_hp !== undefined) stats.maxHp = p.max_hp;
                         if (p.mp !== undefined) stats.mp = p.mp;
                         if (p.max_mp !== undefined) stats.maxMp = p.max_mp;
+                        if (p.attack !== undefined) stats.attack = p.attack;
+                        if (p.defense !== undefined) stats.defense = p.defense;
+                        if (p.crit_rate !== undefined) stats.critRate = p.crit_rate;
+                        if (p.crit_damage !== undefined) stats.critDamage = p.crit_damage;
                     }
                     if (p.dead !== undefined) {
                         if (p.dead && !this.playerEntity.dead) {
@@ -597,6 +720,10 @@ export class ArenaScene extends BaseGameScene {
                     if (p.max_hp !== undefined) stats.maxHp = p.max_hp;
                     if (p.mp !== undefined) stats.mp = p.mp;
                     if (p.max_mp !== undefined) stats.maxMp = p.max_mp;
+                    if (p.attack !== undefined) stats.attack = p.attack;
+                    if (p.defense !== undefined) stats.defense = p.defense;
+                    if (p.crit_rate !== undefined) stats.critRate = p.crit_rate;
+                    if (p.crit_damage !== undefined) stats.critDamage = p.crit_damage;
                 }
             } else if (p.name) {
                 // 新玩家（有 name 字段说明是全量数据），添加到场景

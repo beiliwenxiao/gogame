@@ -73,6 +73,7 @@ export const StatusEffectData = {
 
 /**
  * 单个状态效果实例
+ * 对齐后端 ecs.BuffInstance: BuffID, SourceID, StartTick, Duration, StackCount, Effects
  */
 export class StatusEffect {
   /**
@@ -91,6 +92,13 @@ export class StatusEffect {
     
     // 生成唯一ID
     this.id = `${type}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // 对齐后端 BuffInstance 字段
+    this.stackCount = 1;            // 当前层数（对齐后端 StackCount）
+    this.maxStacks = 0;             // 最大层数（0=无限）
+    this.effects = {};              // 属性修改器 map（对齐后端 Effects map[string]float64）
+    this.startTick = 0;             // 开始 tick（对齐后端 StartTick）
+    this.sourceEntityId = null;     // 来源实体ID（对齐后端 SourceID）
     
     // 上次触发时间（用于DOT/HOT效果）
     this.lastTriggerTime = 0;
@@ -167,33 +175,54 @@ export class StatusEffectComponent extends Component {
 
   /**
    * 添加状态效果
+   * 对齐后端 CombatEntity.ApplyBuff 的叠层逻辑：
+   * - 已存在：刷新持续时间，层数+1（不超过 maxStacks）
+   * - 不存在：新建 stackCount=1
    * @param {number} type - 状态效果类型
    * @param {number} duration - 持续时间（秒）
    * @param {number} [intensity=1] - 强度倍数
    * @param {Object} [source=null] - 来源实体
+   * @param {Object} [options={}] - 额外选项
+   * @param {number} [options.maxStacks=0] - 最大层数（0=无限）
+   * @param {Object} [options.effects={}] - 属性修改器
    * @returns {boolean} 是否成功添加
    */
-  addEffect(type, duration, intensity = 1, source = null) {
+  addEffect(type, duration, intensity = 1, source = null, options = {}) {
     // 检查是否已存在相同类型的效果
     if (this.effects.has(type)) {
       const existing = this.effects.get(type);
       
-      // 如果新效果持续时间更长或强度更高，替换现有效果
-      if (duration > existing.remainingTime || intensity > existing.intensity) {
-        this.effects.set(type, new StatusEffect(type, duration, intensity, source));
-        this.needsRecalculation = true;
-        console.log(`StatusEffect: 替换状态效果 ${StatusEffectData[type].name}`);
-        return true;
-      } else {
-        // 刷新现有效果的持续时间
-        existing.remainingTime = Math.max(existing.remainingTime, duration);
-        console.log(`StatusEffect: 刷新状态效果 ${StatusEffectData[type].name}`);
-        return false;
+      // 对齐后端：刷新持续时间，叠加层数
+      existing.remainingTime = duration;
+      existing.duration = duration;
+      
+      const maxStacks = options.maxStacks || existing.maxStacks || 0;
+      if (maxStacks === 0 || existing.stackCount < maxStacks) {
+        existing.stackCount++;
       }
+      
+      // 更新强度（取较高值）
+      if (intensity > existing.intensity) {
+        existing.intensity = intensity;
+      }
+      
+      // 合并 effects
+      if (options.effects) {
+        Object.assign(existing.effects, options.effects);
+      }
+      
+      this.needsRecalculation = true;
+      console.log(`StatusEffect: 叠加状态效果 ${StatusEffectData[type].name} x${existing.stackCount}`);
+      return true;
     }
     
     // 添加新效果
     const effect = new StatusEffect(type, duration, intensity, source);
+    effect.maxStacks = options.maxStacks || 0;
+    effect.effects = options.effects || {};
+    effect.sourceEntityId = options.sourceEntityId || null;
+    effect.startTick = options.startTick || 0;
+    
     this.effects.set(type, effect);
     this.needsRecalculation = true;
     

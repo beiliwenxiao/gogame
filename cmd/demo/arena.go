@@ -42,6 +42,7 @@ func (s *DemoServer) makePlayerState(p *PlayerSession) map[string]interface{} {
 		"mp": p.mp, "max_mp": p.maxMP, "attack": p.attack,
 		"defense": p.defense, "speed": p.speed, "level": p.level,
 		"dead": p.dead, "direction": p.direction,
+		"crit_rate": p.critRate, "crit_damage": p.critDmg,
 	}
 }
 
@@ -79,6 +80,8 @@ func (s *DemoServer) handleEnterArena(session *PlayerSession) {
 	session.defense = total.Defense
 	session.speed = total.Speed
 	session.level = total.Level
+	session.critRate = total.CritRate
+	session.critDmg = 1.5 // 默认暴击倍率，对齐后端 CombatAttributeComponent.CritDamage
 	session.dead = false
 	session.inArena = true
 	s.arena.mu.Lock()
@@ -158,9 +161,9 @@ func (s *DemoServer) handleAttack(session *PlayerSession, data json.RawMessage) 
 		return
 	}
 	damage := calcDamage(session.attack, target.defense)
-	isCrit := rand.Float64() < 0.1
+	isCrit := rand.Float64() < session.critRate
 	if isCrit {
-		damage *= 1.5
+		damage *= session.critDmg
 	}
 	damage = math.Round(damage)
 	target.hp -= damage
@@ -249,9 +252,9 @@ func (s *DemoServer) handleCastSkill(session *PlayerSession, data json.RawMessag
 		if dmg < 1 {
 			dmg = 1
 		}
-		isCrit := rand.Float64() < 0.15
+		isCrit := rand.Float64() < (session.critRate + 0.05) // 技能暴击率比普攻高5%
 		if isCrit {
-			dmg = math.Round(dmg * 1.5)
+			dmg = math.Round(dmg * session.critDmg)
 		}
 		t.hp -= dmg
 		if t.hp < 0 {
@@ -357,6 +360,10 @@ func (s *DemoServer) arenaTick() {
 					diff["max_hp"] = p.maxHP
 					diff["mp"] = p.mp
 					diff["max_mp"] = p.maxMP
+					diff["attack"] = p.attack
+					diff["defense"] = p.defense
+					diff["crit_rate"] = p.critRate
+					diff["crit_damage"] = p.critDmg
 					diff["dead"] = p.dead
 					diff["direction"] = p.direction
 					hasDiff = true
@@ -375,6 +382,16 @@ func (s *DemoServer) arenaTick() {
 					if snap.mp != p.mp || snap.maxMP != p.maxMP {
 						diff["mp"] = p.mp
 						diff["max_mp"] = p.maxMP
+						hasDiff = true
+					}
+					if snap.attack != p.attack || snap.defense != p.defense {
+						diff["attack"] = p.attack
+						diff["defense"] = p.defense
+						hasDiff = true
+					}
+					if snap.critRate != p.critRate || snap.critDmg != p.critDmg {
+						diff["crit_rate"] = p.critRate
+						diff["crit_damage"] = p.critDmg
 						hasDiff = true
 					}
 					if snap.dead != p.dead {
@@ -396,6 +413,8 @@ func (s *DemoServer) arenaTick() {
 					x: p.x, y: p.y,
 					hp: p.hp, maxHP: p.maxHP,
 					mp: p.mp, maxMP: p.maxMP,
+					attack: p.attack, defense: p.defense,
+					critRate: p.critRate, critDmg: p.critDmg,
 					dead: p.dead, direction: p.direction,
 				}
 			}

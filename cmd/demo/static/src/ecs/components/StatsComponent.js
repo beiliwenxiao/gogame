@@ -17,6 +17,8 @@ export class StatsComponent extends Component {
    * @param {number} stats.attack - 攻击力
    * @param {number} stats.defense - 防御力
    * @param {number} stats.speed - 移动速度
+   * @param {number} stats.critRate - 暴击率 (0~1)，对齐后端 CombatAttributeComponent.CritRate
+   * @param {number} stats.critDamage - 暴击倍率，对齐后端 CombatAttributeComponent.CritDamage
    * @param {number} stats.level - 等级
    * @param {number} stats.exp - 经验值
    * @param {number} stats.mainElement - 主元素类型
@@ -42,6 +44,12 @@ export class StatsComponent extends Component {
     this.attack = this.baseAttack;
     this.defense = this.baseDefense;
     this.speed = this.baseSpeed;
+    
+    // 暴击属性（对齐后端 CombatAttributeComponent）
+    this.baseCritRate = stats.critRate || 0.1;     // 默认10%暴击率
+    this.baseCritDamage = stats.critDamage || 1.5; // 默认1.5倍暴击伤害
+    this.critRate = this.baseCritRate;
+    this.critDamage = this.baseCritDamage;
     
     // 等级和经验
     this.level = stats.level || 1;
@@ -279,6 +287,8 @@ export class StatsComponent extends Component {
     this.attack = Math.floor((this.baseAttack + (effects.attackBonus || 0)) * (effects.weaponDamageMultiplier || 1));
     this.defense = Math.floor(this.baseDefense + (effects.defenseBonus || 0));
     this.speed = Math.floor(this.baseSpeed + (effects.speedBonus || 0));
+    this.critRate = this.baseCritRate + (effects.critRateBonus || 0);
+    this.critDamage = this.baseCritDamage + (effects.critDamageBonus || 0);
     
     // 按比例调整当前HP/MP
     this.hp = Math.floor(this.maxHp * hpRatio);
@@ -313,6 +323,8 @@ export class StatsComponent extends Component {
     this.attack = this.baseAttack;
     this.defense = this.baseDefense;
     this.speed = this.baseSpeed;
+    this.critRate = this.baseCritRate;
+    this.critDamage = this.baseCritDamage;
     
     // 按比例调整当前HP/MP
     this.hp = Math.floor(this.maxHp * hpRatio);

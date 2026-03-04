@@ -190,6 +190,27 @@ func (s *DemoServer) sendCharFullInfo(session *PlayerSession) {
 	total, _ := s.db.CalcTotalStats(ch)
 	equips, _ := s.db.GetCharEquipments(ch.ID)
 	skills, _ := s.db.GetSkillsByClass(ch.Class)
+
+	// 如果玩家在竞技场内，同步更新 session 的战斗属性
+	// 这样 arenaTick 增量同步会自动将变化广播给其他玩家
+	if session.inArena {
+		session.attack = total.Attack
+		session.defense = total.Defense
+		session.speed = total.Speed
+		session.critRate = total.CritRate
+		// 保留 HP/MP 比例
+		if session.maxHP > 0 {
+			hpRatio := session.hp / session.maxHP
+			session.maxHP = total.MaxHP
+			session.hp = session.maxHP * hpRatio
+		}
+		if session.maxMP > 0 {
+			mpRatio := session.mp / session.maxMP
+			session.maxMP = total.MaxMP
+			session.mp = session.maxMP * mpRatio
+		}
+	}
+
 	session.Send(ServerMessage{Type: MsgCharInfo, Data: map[string]interface{}{
 		"character":  total,
 		"equipments": equips,

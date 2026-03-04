@@ -145,6 +145,27 @@ function bindWSHandlers() {
     APP.equipments = data.equipments || [];
     APP.skills = data.skills || [];
     renderLobby();
+    // 如果在竞技场内，同步更新 ArenaScene 中自己的属性
+    if (arena.engineReady && arena.arenaScene && arena.arenaScene.playerEntity) {
+      const ch = data.character;
+      const stats = arena.arenaScene.playerEntity.getComponent('stats');
+      if (stats && ch) {
+        stats.attack = ch.attack;
+        stats.defense = ch.defense;
+        stats.speed = ch.speed;
+        if (ch.crit_rate !== undefined) stats.critRate = ch.crit_rate;
+        if (ch.max_hp) {
+          const hpRatio = stats.maxHp > 0 ? stats.hp / stats.maxHp : 1;
+          stats.maxHp = ch.max_hp;
+          stats.hp = Math.floor(stats.maxHp * hpRatio);
+        }
+        if (ch.max_mp) {
+          const mpRatio = stats.maxMp > 0 ? stats.mp / stats.maxMp : 1;
+          stats.maxMp = ch.max_mp;
+          stats.mp = Math.floor(stats.maxMp * mpRatio);
+        }
+      }
+    }
   });
 
   ws.on('equip_list', (data) => {
