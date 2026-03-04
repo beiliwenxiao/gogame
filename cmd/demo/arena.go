@@ -88,12 +88,14 @@ func (s *DemoServer) handleEnterArena(session *PlayerSession) {
 	s.arena.players[session.charID] = session
 	s.arena.mu.Unlock()
 	skills, _ := s.db.GetSkillsByClass(session.charClass)
+	equips, _ := s.db.GetCharEquipments(session.charID)
 	players := s.getArenaPlayersState()
 	session.Send(ServerMessage{Type: MsgArenaState, Data: map[string]interface{}{
 		"players": players, "self_id": session.charID,
 		"campfire": map[string]float64{"x": CampfireX, "y": CampfireY},
 		"arena":    map[string]float64{"width": ArenaWidth, "height": ArenaHeight},
 		"skills":   skills,
+		"equipments": equips,
 	}})
 	s.arena.Broadcast(ServerMessage{Type: MsgPlayerJoined, Data: s.makePlayerState(session)}, session.charID)
 	log.Printf("玩家 %s(%s) 进入修罗斗场", session.charName, session.charClass)

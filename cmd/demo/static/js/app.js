@@ -165,6 +165,10 @@ function bindWSHandlers() {
           stats.mp = Math.floor(stats.maxMp * mpRatio);
         }
       }
+      // 同步装备到 ArenaScene 的 EquipmentComponent
+      if (data.equipments && arena.arenaScene.loadBackendEquipments) {
+        arena.arenaScene.loadBackendEquipments(data.equipments);
+      }
     }
   });
 

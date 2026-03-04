@@ -109,8 +109,8 @@ export class ArenaScene extends BaseGameScene {
             this.selfId = data.self_id;
             // 只更新火堆坐标，保留动画参数
             if (data.campfire) {
-                this.campfire.x = data.campfire.x || 400;
-                this.campfire.y = data.campfire.y || 300;
+                this.campfire.x = data.campfire.x !== undefined ? data.campfire.x : 0;
+                this.campfire.y = data.campfire.y !== undefined ? data.campfire.y : 464;
             }
             this.arenaSize = data.arena || { width: 800, height: 600 };
             this.skills = data.skills || [];
@@ -124,6 +124,11 @@ export class ArenaScene extends BaseGameScene {
                         this.addRemotePlayer(p);
                     }
                 }
+            }
+            
+            // 加载后端装备到前端 EquipmentComponent
+            if (data.equipments && this.playerEntity) {
+                this.loadBackendEquipments(data.equipments);
             }
         }
         
@@ -1057,6 +1062,78 @@ export class ArenaScene extends BaseGameScene {
         });
         
         console.log('ArenaScene: 注入后端技能', backendSkills.map(s => s.name));
+    }
+
+    /**
+     * 将后端装备数据转换为前端格式并装备到 EquipmentComponent
+     * 后端格式: { id, slot_type, def: { id, name, slot_type, class, quality, level, attack, defense, hp, speed, crit_rate } }
+     * 前端格式: { id, name, type, subType, rarity, stats: { attack, defense, maxHp, speed }, attackSpeed, attackRange, attackDistance }
+     * @param {Array} backendEquips - 后端装备数据数组
+     */
+    loadBackendEquipments(backendEquips) {
+        if (!this.playerEntity || !backendEquips || backendEquips.length === 0) return;
+        
+        const equipment = this.playerEntity.getComponent('equipment');
+        if (!equipment) return;
+        
+        // 后端 slot_type -> 前端 slot 映射
+        const SLOT_MAP = {
+            'weapon': 'mainhand',
+            'helmet': 'helmet',
+            'armor': 'armor',
+            'boots': 'boots'
+        };
+        
+        // 后端 quality -> 前端 rarity 数值映射
+        const QUALITY_MAP = {
+            'normal': 0,
+            'rare': 2,
+            'epic': 3,
+            'legendary': 4
+        };
+        
+        // 职业默认武器属性（参考 EquipmentData.json）
+        const charClass = this.playerEntity.class || 'warrior';
+        const WEAPON_PROPS = {
+            'warrior': { attackSpeed: 2.0, attackRange: 90, attackDistance: 100 },
+            'archer': { attackSpeed: 3.0, attackRange: 200, attackDistance: 250 }
+        };
+        
+        for (const eq of backendEquips) {
+            const def = eq.def;
+            if (!def) continue;
+            
+            const frontendSlot = SLOT_MAP[eq.slot_type];
+            if (!frontendSlot) continue;
+            
+            // 构建前端装备对象
+            const item = {
+                id: def.id,
+                name: def.name,
+                type: eq.slot_type,
+                subType: frontendSlot,
+                rarity: QUALITY_MAP[def.quality] !== undefined ? QUALITY_MAP[def.quality] : 0,
+                level: def.level,
+                stats: {
+                    attack: def.attack || 0,
+                    defense: def.defense || 0,
+                    maxHp: def.hp || 0,
+                    speed: def.speed || 0
+                }
+            };
+            
+            // 武器添加攻击属性（参考 EquipmentData.json 的 attackSpeed/attackRange/attackDistance）
+            if (eq.slot_type === 'weapon') {
+                const weaponProps = WEAPON_PROPS[charClass] || WEAPON_PROPS['warrior'];
+                item.attackSpeed = weaponProps.attackSpeed;
+                item.attackRange = weaponProps.attackRange;
+                item.attackDistance = weaponProps.attackDistance;
+            }
+            
+            equipment.equip(frontendSlot, item);
+        }
+        
+        console.log('ArenaScene: 加载后端装备完成', backendEquips.map(e => e.def?.name));
     }
 
     /**

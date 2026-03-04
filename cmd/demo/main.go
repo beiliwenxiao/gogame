@@ -25,7 +25,7 @@ const (
 	ArenaWidth   = 960.0
 	ArenaHeight  = 960.0
 	CampfireX    = 0.0
-	CampfireY    = 464.0
+	CampfireY    = 464.0 // 30x30等距地图中心: gridToScreen(14.5, 14.5) = (0, 464)
 	TickRate     = 30 // 每秒 tick 数（移动同步用）
 	StateSyncHz  = 5  // 状态同步频率（HP/MP/死亡等）
 	AOIRadius    = 500.0

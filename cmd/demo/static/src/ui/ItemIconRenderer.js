@@ -16,7 +16,7 @@ export class ItemIconRenderer {
    * @returns {boolean} 是否成功绘制了图标
    */
   static drawIcon(ctx, item, cx, cy, slotSize) {
-    const id = item.id || '';
+    const id = String(item.id || '');
     const effectType = item.effect?.type || '';
     const scale = slotSize / 32;
 
