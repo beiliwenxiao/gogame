@@ -29,8 +29,12 @@ func (s *DemoServer) handleMessage(session *PlayerSession, msg ClientMessage) {
 		s.handleMove(session, msg.Data)
 	case MsgAttack:
 		s.handleAttack(session, msg.Data)
+	case MsgAttackNPC:
+		s.handleAttackNPC(session, msg.Data)
 	case MsgCastSkill:
 		s.handleCastSkill(session, msg.Data)
+	case MsgCastSkillNPC:
+		s.handleCastSkillNPC(session, msg.Data)
 	case MsgChat:
 		s.handleChat(session, msg.Data)
 	case MsgGetCharInfo:
@@ -208,6 +212,19 @@ func (s *DemoServer) sendCharFullInfo(session *PlayerSession) {
 			mpRatio := session.mp / session.maxMP
 			session.maxMP = total.MaxMP
 			session.mp = session.maxMP * mpRatio
+		}
+		// 更新武器攻击范围
+		session.weaponAttackRange = 60.0
+		session.weaponAttackDist = 100.0
+		if session.charClass == "archer" {
+			session.weaponAttackRange = 200.0
+			session.weaponAttackDist = 250.0
+		}
+		for _, eq := range equips {
+			if eq.SlotType == "weapon" && eq.Def.AttackRange > 0 {
+				session.weaponAttackRange = eq.Def.AttackRange
+				session.weaponAttackDist = eq.Def.AttackDistance
+			}
 		}
 	}
 

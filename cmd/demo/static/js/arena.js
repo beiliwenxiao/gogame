@@ -302,6 +302,32 @@ class ArenaRenderer {
         if (self) this.updateHUD(self);
     }
 
+    // ===== NPC 事件处理 =====
+
+    onNPCSpawn(data) {
+        if (this.engineReady && this.arenaScene) {
+            this.arenaScene.onNPCSpawn(data);
+        }
+    }
+
+    onNPCDied(data) {
+        if (this.engineReady && this.arenaScene) {
+            this.arenaScene.onNPCDied(data);
+        }
+    }
+
+    onNPCUpdate(data) {
+        if (this.engineReady && this.arenaScene) {
+            this.arenaScene.onNPCUpdate(data);
+        }
+    }
+
+    onNPCDrop(data) {
+        if (this.engineReady && this.arenaScene) {
+            this.arenaScene.onNPCDrop(data);
+        }
+    }
+
     // ===== HUD 更新（复用原有 DOM） =====
 
     updateHUD(self) {

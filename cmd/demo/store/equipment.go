@@ -5,7 +5,8 @@ import "fmt"
 // GetEquipmentDefs 获取角色可用的装备列表
 func (s *Store) GetEquipmentDefs(class string) ([]EquipmentDef, error) {
 	rows, err := s.db.Query(
-		`SELECT id,name,slot_type,class,quality,level,attack,defense,hp,speed,crit_rate
+		`SELECT id,name,slot_type,class,quality,level,attack,defense,hp,speed,crit_rate,
+		        pierce,multi_arrow,attack_interval,attack_range,attack_distance
 		 FROM equipment_defs WHERE class=? OR class='all' ORDER BY quality DESC, attack DESC`,
 		class,
 	)
@@ -18,7 +19,8 @@ func (s *Store) GetEquipmentDefs(class string) ([]EquipmentDef, error) {
 	for rows.Next() {
 		var eq EquipmentDef
 		if err := rows.Scan(&eq.ID, &eq.Name, &eq.SlotType, &eq.Class, &eq.Quality, &eq.Level,
-			&eq.Attack, &eq.Defense, &eq.HP, &eq.Speed, &eq.CritRate); err != nil {
+			&eq.Attack, &eq.Defense, &eq.HP, &eq.Speed, &eq.CritRate,
+			&eq.Pierce, &eq.MultiArrow, &eq.AttackInterval, &eq.AttackRange, &eq.AttackDistance); err != nil {
 			return nil, err
 		}
 		result = append(result, eq)
@@ -30,10 +32,12 @@ func (s *Store) GetEquipmentDefs(class string) ([]EquipmentDef, error) {
 func (s *Store) GetEquipmentDefByID(id int64) (*EquipmentDef, error) {
 	var eq EquipmentDef
 	err := s.db.QueryRow(
-		`SELECT id,name,slot_type,class,quality,level,attack,defense,hp,speed,crit_rate
+		`SELECT id,name,slot_type,class,quality,level,attack,defense,hp,speed,crit_rate,
+		        pierce,multi_arrow,attack_interval,attack_range,attack_distance
 		 FROM equipment_defs WHERE id=?`, id,
 	).Scan(&eq.ID, &eq.Name, &eq.SlotType, &eq.Class, &eq.Quality, &eq.Level,
-		&eq.Attack, &eq.Defense, &eq.HP, &eq.Speed, &eq.CritRate)
+		&eq.Attack, &eq.Defense, &eq.HP, &eq.Speed, &eq.CritRate,
+		&eq.Pierce, &eq.MultiArrow, &eq.AttackInterval, &eq.AttackRange, &eq.AttackDistance)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +71,8 @@ func (s *Store) UnequipItem(charID int64, slotType string) error {
 func (s *Store) GetCharEquipments(charID int64) ([]CharEquipWithDef, error) {
 	rows, err := s.db.Query(
 		`SELECT ce.id, ce.slot_type, ed.id, ed.name, ed.slot_type, ed.class, ed.quality, ed.level,
-		        ed.attack, ed.defense, ed.hp, ed.speed, ed.crit_rate
+		        ed.attack, ed.defense, ed.hp, ed.speed, ed.crit_rate,
+		        ed.pierce, ed.multi_arrow, ed.attack_interval, ed.attack_range, ed.attack_distance
 		 FROM char_equipments ce
 		 JOIN equipment_defs ed ON ce.equip_def_id = ed.id
 		 WHERE ce.character_id=?`, charID,
@@ -82,7 +87,8 @@ func (s *Store) GetCharEquipments(charID int64) ([]CharEquipWithDef, error) {
 		var item CharEquipWithDef
 		if err := rows.Scan(&item.ID, &item.SlotType,
 			&item.Def.ID, &item.Def.Name, &item.Def.SlotType, &item.Def.Class, &item.Def.Quality, &item.Def.Level,
-			&item.Def.Attack, &item.Def.Defense, &item.Def.HP, &item.Def.Speed, &item.Def.CritRate); err != nil {
+			&item.Def.Attack, &item.Def.Defense, &item.Def.HP, &item.Def.Speed, &item.Def.CritRate,
+			&item.Def.Pierce, &item.Def.MultiArrow, &item.Def.AttackInterval, &item.Def.AttackRange, &item.Def.AttackDistance); err != nil {
 			return nil, err
 		}
 		result = append(result, item)

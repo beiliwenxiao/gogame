@@ -31,17 +31,22 @@ type Character struct {
 
 // EquipmentDef 装备定义（模板）
 type EquipmentDef struct {
-	ID       int64   `json:"id"`
-	Name     string  `json:"name"`
-	SlotType string  `json:"slot_type"` // weapon, helmet, armor, boots
-	Class    string  `json:"class"`     // warrior, archer, all
-	Quality  string  `json:"quality"`   // normal, rare, epic
-	Level    int     `json:"level"`
-	Attack   float64 `json:"attack"`
-	Defense  float64 `json:"defense"`
-	HP       float64 `json:"hp"`
-	Speed    float64 `json:"speed"`
-	CritRate float64 `json:"crit_rate"`
+	ID            int64   `json:"id"`
+	Name          string  `json:"name"`
+	SlotType      string  `json:"slot_type"` // weapon, helmet, armor, boots
+	Class         string  `json:"class"`     // warrior, archer, all
+	Quality       string  `json:"quality"`   // normal, rare, epic
+	Level         int     `json:"level"`
+	Attack        float64 `json:"attack"`
+	Defense       float64 `json:"defense"`
+	HP            float64 `json:"hp"`
+	Speed         float64 `json:"speed"`
+	CritRate      float64 `json:"crit_rate"`
+	Pierce        int     `json:"pierce"`          // 穿透数（弓箭类）
+	MultiArrow    int     `json:"multi_arrow"`     // 多重箭数（弓箭类）
+	AttackInterval float64 `json:"attack_interval"` // 攻击间隔（秒）
+	AttackRange   float64 `json:"attack_range"`    // 攻击范围（像素）
+	AttackDistance float64 `json:"attack_distance"` // 攻击距离（像素）
 }
 
 // CharEquipment 角色已装备的装备

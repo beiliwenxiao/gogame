@@ -200,6 +200,10 @@ function bindWSHandlers() {
   ws.on('player_respawn', (data) => arena.onPlayerRespawn(data));
   ws.on('skill_casted', (data) => arena.onSkillCasted(data));
   ws.on('state_sync', (data) => arena.onStateSync(data));
+  ws.on('npc_spawn', (data) => arena.onNPCSpawn(data));
+  ws.on('npc_died', (data) => arena.onNPCDied(data));
+  ws.on('npc_update', (data) => arena.onNPCUpdate(data));
+  ws.on('npc_drop', (data) => arena.onNPCDrop(data));
 
   ws.on('chat_msg', (data) => {
     const box = document.getElementById('chat-messages');

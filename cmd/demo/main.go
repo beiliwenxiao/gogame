@@ -29,6 +29,8 @@ const (
 	TickRate     = 30 // 每秒 tick 数（移动同步用）
 	StateSyncHz  = 5  // 状态同步频率（HP/MP/死亡等）
 	AOIRadius    = 500.0
+	MaxNPCCount  = 100 // NPC 上限
+	NPCAITickHz  = 2   // NPC AI 更新频率（每秒）
 )
 
 // ---------- 消息类型 ----------
@@ -67,6 +69,12 @@ const (
 	MsgCharInfo       = "char_info"
 	MsgEquipList      = "equip_list"
 	MsgStateSync      = "state_sync"
+	MsgNPCSpawn       = "npc_spawn"
+	MsgNPCDied        = "npc_died"
+	MsgNPCUpdate      = "npc_update"
+	MsgNPCDrop        = "npc_drop"
+	MsgAttackNPC      = "attack_npc"
+	MsgCastSkillNPC   = "cast_skill_npc"
 	MsgError          = "error"
 )
 
@@ -107,6 +115,10 @@ type PlayerSession struct {
 	dead      bool
 	direction string // "up","down","left","right"
 
+	// 武器属性
+	weaponAttackRange float64 // 武器攻击范围（像素）
+	weaponAttackDist  float64 // 武器攻击距离（像素）
+
 	// 增量同步：上次发送的快照（每个接收者独立）
 	lastSync map[int64]*playerSnapshot
 }
@@ -143,14 +155,48 @@ func (ps *PlayerSession) Send(msg ServerMessage) {
 
 // ---------- 竞技场 ----------
 
+// ArenaNPC 竞技场NPC
+type ArenaNPC struct {
+	ID        int64   `json:"id"`
+	Name      string  `json:"name"`
+	Template  string  `json:"template"`  // 敌人模板ID（对应前端 EntityFactory）
+	Level     int     `json:"level"`
+	X, Y      float64 `json:"x,y"`
+	HP, MaxHP float64 `json:"hp,max_hp"`
+	Attack    float64 `json:"attack"`
+	Defense   float64 `json:"defense"`
+	Speed     float64 `json:"speed"`
+	Dead      bool    `json:"dead"`
+
+	// AI 相关
+	TargetID     int64   // 当前攻击目标的 charID，0 表示无目标
+	AttackRange  float64 // 攻击范围
+	AttackCD     float64 // 攻击冷却（秒）
+	LastAttackAt int64   // 上次攻击时间（UnixMilli）
+	AggroRange   float64 // 仇恨范围（主动攻击距离）
+	CritRate     float64 // 暴击率
+	CritDmg      float64 // 暴击倍率
+	SpawnX       float64 // 出生点 X
+	SpawnY       float64 // 出生点 Y
+	LeashRange   float64 // 脱战回归距离
+
+	// 恐惧状态（战吼效果）
+	FearUntil int64   // 恐惧结束时间（UnixMilli），0 表示无恐惧
+	FearDirX  float64 // 恐惧逃跑方向 X
+	FearDirY  float64 // 恐惧逃跑方向 Y
+}
+
 type Arena struct {
 	mu      sync.RWMutex
 	players map[int64]*PlayerSession // charID -> session
+	npcs    map[int64]*ArenaNPC      // npcID -> NPC
+	npcSeq  int64                    // NPC ID 自增序列
 }
 
 func NewArena() *Arena {
 	return &Arena{
 		players: make(map[int64]*PlayerSession),
+		npcs:    make(map[int64]*ArenaNPC),
 	}
 }
 

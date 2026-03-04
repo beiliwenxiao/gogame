@@ -14,3 +14,5 @@ inclusion: always
 - gfgame是后端引擎，html5-mmrpg-game是前端引擎
 - cmd/demo中，需要包含html5-mmrpg-game的代码，尽量采用html5-mmrpg-game的代码
 - cmd/demo的前端，尽量使用html5-mmrpg-game/src/prologue中的代码，不要自己另外写。
+- 添加和修改前端页面时，先参考一下 #html5-mmrpg-game/docs/usage_guide.md
+如果已经有功能，则复用。如果没有功能，则写出功能后，抽象成好调用的函数或类，放到父模块中。包括cmd/demo中调用的js，以及html5-mmrpg-game中的js。

@@ -39,7 +39,12 @@ func (s *Store) AutoMigrate() error {
 			defense REAL DEFAULT 0,
 			hp REAL DEFAULT 0,
 			speed REAL DEFAULT 0,
-			crit_rate REAL DEFAULT 0
+			crit_rate REAL DEFAULT 0,
+			pierce INTEGER DEFAULT 0,
+			multi_arrow INTEGER DEFAULT 0,
+			attack_interval REAL DEFAULT 0,
+			attack_range REAL DEFAULT 0,
+			attack_distance REAL DEFAULT 0
 		)`,
 		`CREATE TABLE IF NOT EXISTS char_equipments (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -66,5 +71,18 @@ func (s *Store) AutoMigrate() error {
 			return fmt.Errorf("建表失败: %w", err)
 		}
 	}
+
+	// 兼容旧数据库：尝试添加新字段（如果已存在则忽略错误）
+	alterStmts := []string{
+		"ALTER TABLE equipment_defs ADD COLUMN pierce INTEGER DEFAULT 0",
+		"ALTER TABLE equipment_defs ADD COLUMN multi_arrow INTEGER DEFAULT 0",
+		"ALTER TABLE equipment_defs ADD COLUMN attack_interval REAL DEFAULT 0",
+		"ALTER TABLE equipment_defs ADD COLUMN attack_range REAL DEFAULT 0",
+		"ALTER TABLE equipment_defs ADD COLUMN attack_distance REAL DEFAULT 0",
+	}
+	for _, stmt := range alterStmts {
+		s.db.Exec(stmt) // 忽略 "duplicate column" 错误
+	}
+
 	return nil
 }
