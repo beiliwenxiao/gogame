@@ -31,8 +31,8 @@ const (
 	AOIRadius         = 500.0
 	MaxNPCCount       = 100  // NPC 上限
 	NPCAITickHz       = 5    // NPC AI 更新频率（每秒）
-	CampfireRadius    = 50.0 // 篝火复活范围（像素）
-	CampfireRespawnHz = 60   // 篝火复活间隔（秒）
+	CampfireRadius    = 100.0 // 篝火复活范围（像素）
+	CampfireRespawnHz = 60    // 篝火复活间隔（秒）
 )
 
 // ---------- 消息类型 ----------
@@ -78,6 +78,7 @@ const (
 	MsgAttackNPC      = "attack_npc"
 	MsgCastSkillNPC   = "cast_skill_npc"
 	MsgError          = "error"
+	MsgCampfireTick   = "campfire_tick" // 篝火倒计时广播
 )
 
 // ---------- 消息结构 ----------

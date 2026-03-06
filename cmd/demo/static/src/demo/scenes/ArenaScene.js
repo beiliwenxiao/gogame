@@ -35,7 +35,8 @@ export class ArenaScene extends BaseGameScene {
             frameCount: 12,
             currentFrame: 0,
             frameTime: 0,
-            frameDuration: 0.16
+            frameDuration: 0.16,
+            countdown: 60  // 复活倒计时（秒）
         };
         
         // 网络同步
@@ -66,6 +67,9 @@ export class ArenaScene extends BaseGameScene {
 
         // 灵魂状态 UI
         this._soulOverlay = null;
+
+        // NPC 死亡白骨列表 [{x, y, life, maxLife}]
+        this.boneCorpses = [];
     }
 
     /**
@@ -330,7 +334,7 @@ export class ArenaScene extends BaseGameScene {
             }
         }
         
-        // 插值 NPC 位置 - 基于速度的线性插值，避免跳跃感
+        // 插值 NPC 位置 - 指数平滑插值，与远程玩家保持一致
         for (const [id, entity] of this.npcEntities) {
             if (entity.dead) continue;
             if (entity.targetX !== undefined) {
@@ -341,30 +345,25 @@ export class ArenaScene extends BaseGameScene {
                     const dist = Math.sqrt(dx * dx + dy * dy);
                     
                     if (dist > 400) {
-                        // 距离过远直接瞬移（传送/重生等情况）
+                        // 距离过远直接瞬移
                         transform.position.x = entity.targetX;
                         transform.position.y = entity.targetY;
-                    } else if (dist > 0.5) {
-                        // 基于 NPC speed 属性做线性插值，匀速移动
-                        const stats = entity.getComponent('stats');
-                        const speed = (stats && stats.speed) ? stats.speed : 60;
-                        // 每帧最大移动距离 = speed * deltaTime，额外乘以1.5补偿网络延迟
-                        const maxMove = speed * deltaTime * 1.5;
-                        if (maxMove >= dist) {
-                            transform.position.x = entity.targetX;
-                            transform.position.y = entity.targetY;
-                        } else {
-                            transform.position.x += (dx / dist) * maxMove;
-                            transform.position.y += (dy / dist) * maxMove;
-                        }
+                    } else if (dist < 0.5) {
+                        transform.position.x = entity.targetX;
+                        transform.position.y = entity.targetY;
+                    } else {
+                        // NPC AI 2Hz，间隔500ms，用更激进的系数确保能在下次更新前追上目标
+                        const lerp = 1 - Math.pow(0.75, deltaTime * 60);
+                        transform.position.x += dx * lerp;
+                        transform.position.y += dy * lerp;
                     }
                     
                     const sprite = entity.getComponent('sprite');
                     if (sprite) {
                         const timeSinceMove = Date.now() - (entity._lastMoveTime || 0);
-                        if (dist > 2 && timeSinceMove < 800) {
+                        if (dist > 1 && timeSinceMove < 800) {
                             sprite.isWalking = true;
-                        } else if (dist <= 2 || timeSinceMove >= 800) {
+                        } else if (dist <= 1 || timeSinceMove >= 800) {
                             sprite.isWalking = false;
                         }
                     }
@@ -377,6 +376,12 @@ export class ArenaScene extends BaseGameScene {
             ind.life -= deltaTime;
             ind.dashOffset += 60 * deltaTime;
             return ind.life > 0;
+        });
+
+        // 更新白骨倒计时
+        this.boneCorpses = this.boneCorpses.filter(b => {
+            b.life -= deltaTime;
+            return b.life > 0;
         });
         
         // 更新火堆动画
@@ -716,8 +721,9 @@ export class ArenaScene extends BaseGameScene {
             this.floatingTextManager.addText(textX, textY, `${data.name} 被 ${data.killer} 击杀`, '#ff0000');
         }
 
-        // 自己死亡：显示灵魂状态提示
+        // 自己死亡：清除选中目标、显示灵魂状态提示
         if (data.char_id === this.selfId) {
+            this.selectedTarget = null;
             this._showSoulOverlay();
         }
     }
@@ -728,31 +734,49 @@ export class ArenaScene extends BaseGameScene {
         const overlay = document.createElement('div');
         overlay.id = 'soul-overlay';
         overlay.style.cssText = [
-            'position:fixed', 'top:0', 'left:0', 'width:100%', 'height:100%',
-            'display:flex', 'flex-direction:column', 'align-items:center', 'justify-content:center',
-            'pointer-events:none', 'z-index:999',
-            'background:rgba(80,100,180,0.25)'
+            'position:fixed', 'top:0', 'left:0', 'width:100%',
+            'display:flex', 'justify-content:center',
+            'padding-top:24px',
+            'pointer-events:none', 'z-index:999'
         ].join(';');
         overlay.innerHTML = `
             <div style="
-                background:rgba(20,30,60,0.85);
+                background:rgba(20,30,60,0.92);
                 border:2px solid #7090ff;
-                border-radius:12px;
-                padding:24px 40px;
+                border-radius:10px;
+                padding:16px 32px;
                 text-align:center;
                 color:#c0d0ff;
                 font-family:sans-serif;
-                box-shadow:0 0 30px rgba(80,120,255,0.5);
+                box-shadow:0 4px 24px rgba(80,120,255,0.5);
+                pointer-events:auto;
+                display:flex;
+                align-items:center;
+                gap:20px;
             ">
-                <div style="font-size:28px;margin-bottom:8px;">👻 灵魂状态</div>
-                <div style="font-size:16px;line-height:1.8;">
-                    你已阵亡，现在是灵魂状态<br>
-                    请前往<span style="color:#ffd060;font-weight:bold;">篝火</span>旁等待复活<br>
-                    <span style="font-size:13px;color:#8090cc;">篝火每 60 秒复活附近的灵魂</span>
+                <div>
+                    <span style="font-size:20px;">👻</span>
+                    <span style="font-size:16px;font-weight:bold;margin-left:8px;">灵魂状态</span>
+                    <span style="font-size:14px;color:#a0b0e0;margin-left:12px;">
+                        你已阵亡，请前往 <span style="color:#ffd060;font-weight:bold;">篝火</span> 旁等待复活
+                    </span>
                 </div>
+                <button id="soul-overlay-confirm" style="
+                    background:#3a5acc;
+                    border:1px solid #7090ff;
+                    border-radius:6px;
+                    color:#e0eaff;
+                    font-size:14px;
+                    padding:6px 18px;
+                    cursor:pointer;
+                    white-space:nowrap;
+                ">知道了</button>
             </div>`;
         document.body.appendChild(overlay);
         this._soulOverlay = overlay;
+        overlay.querySelector('#soul-overlay-confirm').addEventListener('click', () => {
+            this._hideSoulOverlay();
+        });
     }
 
     /** 隐藏灵魂状态遮罩 */
@@ -1000,6 +1024,16 @@ export class ArenaScene extends BaseGameScene {
             this.selectedTarget = null;
         }
         
+        // 记录白骨位置（10秒后消失）
+        if (transform) {
+            this.boneCorpses.push({
+                x: transform.position.x,
+                y: transform.position.y,
+                life: 10,
+                maxLife: 10
+            });
+        }
+
         // 立即移除死亡 NPC 实体
         const idx = this.entities.indexOf(entity);
         if (idx >= 0) this.entities.splice(idx, 1);
@@ -1007,6 +1041,17 @@ export class ArenaScene extends BaseGameScene {
             this.engine.entityManager.removeEntity(entity);
         }
         this.npcEntities.delete(npcId);
+    }
+
+    /**
+     * 处理篝火倒计时广播
+     * @param {Object} data - { countdown: number }
+     */
+    onCampfireTick(data) {
+        if (!data || data.countdown === undefined) return;
+        if (this.campfire) {
+            this.campfire.countdown = data.countdown;
+        }
     }
 
     /**
@@ -1041,6 +1086,9 @@ export class ArenaScene extends BaseGameScene {
      */
     handleEnemySelection() {
         if (!this.inputManager || !this.playerEntity) return;
+        
+        // 灵魂状态不允许选中目标（不显示攻击范围）
+        if (this.playerEntity.dead) return;
         
         // 只在鼠标点击且未被 UI 处理时选中
         if (!this.inputManager.isMouseClicked() || this.inputManager.isMouseClickHandled()) return;
@@ -1225,6 +1273,15 @@ export class ArenaScene extends BaseGameScene {
             }
         }
 
+        // 添加白骨
+        for (const bone of this.boneCorpses) {
+            renderQueue.push({
+                type: 'bone',
+                y: bone.y,
+                render: () => this._renderBoneCorpse(ctx, bone)
+            });
+        }
+
         // 添加火堆
         if (this.campfire) {
             renderQueue.push({
@@ -1246,20 +1303,98 @@ export class ArenaScene extends BaseGameScene {
     }
 
     /**
+     * 渲染 NPC 死亡白骨（最后3秒淡出）
+     */
+    _renderBoneCorpse(ctx, bone) {
+        const x = bone.x;
+        const y = bone.y;
+        // 最后3秒淡出
+        const alpha = bone.life < 3 ? bone.life / 3 : 1;
+
+        ctx.save();
+        ctx.globalAlpha = alpha * 0.85;
+        ctx.translate(x, y - 8);
+
+        // 头骨
+        ctx.fillStyle = '#d4cfc0';
+        ctx.beginPath();
+        ctx.ellipse(0, -14, 7, 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#a09880';
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
+
+        // 眼眶
+        ctx.fillStyle = '#2a2520';
+        ctx.beginPath();
+        ctx.ellipse(-2.5, -15, 1.8, 1.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(2.5, -15, 1.8, 1.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 躯干骨骼（横向散落）
+        ctx.strokeStyle = '#c8c3b0';
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = 'round';
+        // 脊椎
+        ctx.beginPath();
+        ctx.moveTo(0, -8);
+        ctx.lineTo(0, 2);
+        ctx.stroke();
+        // 肋骨
+        ctx.lineWidth = 1.2;
+        for (let i = 0; i < 3; i++) {
+            const ry = -6 + i * 3;
+            ctx.beginPath();
+            ctx.moveTo(0, ry);
+            ctx.quadraticCurveTo(-6, ry - 1, -7, ry + 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(0, ry);
+            ctx.quadraticCurveTo(6, ry - 1, 7, ry + 2);
+            ctx.stroke();
+        }
+        // 腿骨（散落）
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-5, 3);
+        ctx.lineTo(-9, 10);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(3, 3);
+        ctx.lineTo(8, 9);
+        ctx.stroke();
+
+        ctx.restore();
+    }
+
+    /**
      * 渲染火堆
      */
     renderCampfire(ctx) {
         const x = this.campfire.x;
         const y = this.campfire.y;
 
-        // 篝火复活范围圈（50px，虚线）
+        // 篝火复活范围圈 - 2.5D 等距椭圆（水平半径100，垂直半径50）
         ctx.save();
-        ctx.setLineDash([6, 4]);
-        ctx.strokeStyle = 'rgba(255, 200, 80, 0.5)';
-        ctx.lineWidth = 1.5;
+        const rx = 100;
+        const ry = 50; // 2.5D：垂直方向压缩为水平的一半
+        ctx.setLineDash([8, 5]);
+        ctx.strokeStyle = 'rgba(255, 200, 80, 0.55)';
+        ctx.lineWidth = 1.8;
         ctx.beginPath();
-        ctx.arc(x, y - 15, 50, 0, Math.PI * 2);
+        ctx.ellipse(x, y - 10, rx, ry, 0, 0, Math.PI * 2);
         ctx.stroke();
+        // 椭圆内填充淡光晕
+        const ringGrad = ctx.createRadialGradient(x, y - 10, 0, x, y - 10, rx);
+        ringGrad.addColorStop(0, 'rgba(255, 200, 80, 0.06)');
+        ringGrad.addColorStop(0.7, 'rgba(255, 150, 30, 0.04)');
+        ringGrad.addColorStop(1, 'rgba(255, 100, 0, 0)');
+        ctx.fillStyle = ringGrad;
+        ctx.beginPath();
+        ctx.ellipse(x, y - 10, rx, ry, 0, 0, Math.PI * 2);
+        ctx.fill();
         ctx.setLineDash([]);
         ctx.restore();
 
@@ -1307,6 +1442,41 @@ export class ArenaScene extends BaseGameScene {
             );
             ctx.globalAlpha = 1.0;
         }
+
+        // 倒计时显示（火堆正上方）
+        const countdown = this.campfire.countdown !== undefined ? this.campfire.countdown : 60;
+        const fireTopY = y - 75; // 火焰顶部上方
+        ctx.save();
+        // 背景胶囊
+        const cdText = `复活 ${countdown}s`;
+        ctx.font = 'bold 13px sans-serif';
+        const tw = ctx.measureText(cdText).width;
+        const padX = 8, padY = 4;
+        const bgX = x - tw / 2 - padX;
+        const bgY = fireTopY - 18;
+        const bgW = tw + padX * 2;
+        const bgH = 22;
+        const r = bgH / 2;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+        ctx.beginPath();
+        ctx.moveTo(bgX + r, bgY);
+        ctx.arcTo(bgX + bgW, bgY, bgX + bgW, bgY + bgH, r);
+        ctx.arcTo(bgX + bgW, bgY + bgH, bgX, bgY + bgH, r);
+        ctx.arcTo(bgX, bgY + bgH, bgX, bgY, r);
+        ctx.arcTo(bgX, bgY, bgX + bgW, bgY, r);
+        ctx.closePath();
+        ctx.fill();
+        // 文字颜色：最后10秒变红闪烁
+        if (countdown <= 10) {
+            const blink = Math.floor(Date.now() / 400) % 2 === 0;
+            ctx.fillStyle = blink ? '#ff4444' : '#ffaa44';
+        } else {
+            ctx.fillStyle = '#ffe066';
+        }
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(cdText, x, bgY + bgH / 2);
+        ctx.restore();
     }
 
     /**
@@ -1726,6 +1896,7 @@ export class ArenaScene extends BaseGameScene {
         this.npcEntities.clear();
         this.selectedTarget = null;
         this.skillRangeIndicators = [];
+        this.boneCorpses = [];
         this._hideSoulOverlay();
         super.exit();
     }

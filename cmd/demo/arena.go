@@ -328,7 +328,7 @@ func (s *DemoServer) respawnPlayerAt(session *PlayerSession, x, y float64) {
 	log.Printf("玩家 %s 在篝火处复活 (%.0f, %.0f)", session.charName, x, y)
 }
 
-// campfireRespawnTick 每60秒复活篝火附近50px内的所有死亡玩家
+// campfireRespawnTick 每60秒复活所有死亡玩家（在篝火附近随机位置）
 func (s *DemoServer) campfireRespawnTick() {
 	s.arena.mu.Lock()
 	defer s.arena.mu.Unlock()
@@ -336,15 +336,12 @@ func (s *DemoServer) campfireRespawnTick() {
 		if !p.dead {
 			continue
 		}
-		dist := distance(p.x, p.y, CampfireX, CampfireY)
-		if dist <= CampfireRadius {
-			// 在篝火附近随机位置复活
-			angle := rand.Float64() * 2 * math.Pi
-			d := 20.0 + rand.Float64()*30.0
-			rx := math.Max(-ArenaWidth+30, math.Min(ArenaWidth-30, CampfireX+math.Cos(angle)*d))
-			ry := math.Max(30, math.Min(ArenaHeight-30, CampfireY+math.Sin(angle)*d))
-			s.respawnPlayerAt(p, rx, ry)
-		}
+		// 所有死亡玩家都在篝火附近复活，不限距离
+		angle := rand.Float64() * 2 * math.Pi
+		d := 20.0 + rand.Float64()*30.0
+		rx := math.Max(-ArenaWidth+30, math.Min(ArenaWidth-30, CampfireX+math.Cos(angle)*d))
+		ry := math.Max(30, math.Min(ArenaHeight-30, CampfireY+math.Sin(angle)*d))
+		s.respawnPlayerAt(p, rx, ry)
 	}
 }
 
@@ -365,6 +362,11 @@ func (s *DemoServer) arenaTick() {
 	campfireTicker := time.NewTicker(CampfireRespawnHz * time.Second)
 	defer campfireTicker.Stop()
 
+	// 篝火倒计时广播：每秒推送剩余秒数
+	campfireCountdownTicker := time.NewTicker(time.Second)
+	defer campfireCountdownTicker.Stop()
+	campfireCountdown := CampfireRespawnHz // 初始倒计时
+
 	// 首次立即刷新一波 NPC
 	s.spawnNPCWave()
 
@@ -377,7 +379,16 @@ func (s *DemoServer) arenaTick() {
 		case <-ticker.C:
 			s.doStateSync()
 		case <-campfireTicker.C:
+			campfireCountdown = CampfireRespawnHz
 			s.campfireRespawnTick()
+		case <-campfireCountdownTicker.C:
+			campfireCountdown--
+			if campfireCountdown < 0 {
+				campfireCountdown = 0
+			}
+			s.arena.BroadcastAll(ServerMessage{Type: MsgCampfireTick, Data: map[string]interface{}{
+				"countdown": campfireCountdown,
+			}})
 		}
 	}
 }

@@ -35,23 +35,36 @@ async function init() {
   } catch (e) {
     console.error('绑定WS处理器失败:', e);
   }
+  await connectWS();
+}
+
+async function connectWS() {
   const host = location.host || 'localhost:9100';
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const btn = document.getElementById('btn-reconnect');
+  if (btn) { btn.disabled = true; btn.textContent = '连接中...'; }
   try {
     await ws.connect(`${proto}://${host}/ws`);
     showMsg('auth-msg', '已连接服务器', false);
   } catch (e) {
-    showMsg('auth-msg', '无法连接服务器，请确认后端已启动');
+    showMsg('auth-msg', '无法连接服务器，请点击"连接服务器"重试');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔌 连接服务器'; }
   }
 }
 
 function bindEvents() {
+  // 连接服务器
+  document.getElementById('btn-reconnect').addEventListener('click', () => {
+    connectWS();
+  });
+
   // 登录/注册
   document.getElementById('btn-login').addEventListener('click', () => {
     console.log('登录按钮被点击');
     const u = document.getElementById('auth-user').value.trim();
     const p = document.getElementById('auth-pass').value;
-    if (!ws.connected) { showMsg('auth-msg', '未连接服务器，请刷新页面'); return; }
+    if (!ws.connected) { showMsg('auth-msg', '未连接服务器，请点击"连接服务器"按钮'); return; }
     if (!u || !p) { showMsg('auth-msg', '请输入用户名和密码'); return; }
     console.log('发送登录请求:', u);
     ws.send('login', { username: u, password: p });
@@ -60,7 +73,7 @@ function bindEvents() {
     console.log('注册按钮被点击');
     const u = document.getElementById('auth-user').value.trim();
     const p = document.getElementById('auth-pass').value;
-    if (!ws.connected) { showMsg('auth-msg', '未连接服务器，请刷新页面'); return; }
+    if (!ws.connected) { showMsg('auth-msg', '未连接服务器，请点击"连接服务器"按钮'); return; }
     if (!u || !p) { showMsg('auth-msg', '请输入用户名和密码'); return; }
     console.log('发送注册请求:', u);
     ws.send('register', { username: u, password: p });
@@ -204,6 +217,7 @@ function bindWSHandlers() {
   ws.on('npc_died', (data) => arena.onNPCDied(data));
   ws.on('npc_update', (data) => arena.onNPCUpdate(data));
   ws.on('npc_drop', (data) => arena.onNPCDrop(data));
+  ws.on('campfire_tick', (data) => arena.onCampfireTick(data));
 
   ws.on('chat_msg', (data) => {
     const box = document.getElementById('chat-messages');

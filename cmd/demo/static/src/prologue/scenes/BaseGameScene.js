@@ -955,9 +955,12 @@ export class BaseGameScene extends PrologueScene {
         this.weaponRenderer.updateMouseAngle(mouseWorldPos, playerCenter, currentTime);
         
         // 水果忍者式滑动攻击检测（通过 MeleeAttackSystem）
-        this.meleeAttackSystem.setPlayerEntity(this.playerEntity);
-        this.meleeAttackSystem.setEntities(this.entities);
-        this.meleeAttackSystem.update(mouseWorldPos, playerCenter, currentTime);
+        // 灵魂状态（dead）时不更新攻击
+        if (!this.playerEntity.dead) {
+          this.meleeAttackSystem.setPlayerEntity(this.playerEntity);
+          this.meleeAttackSystem.setEntities(this.entities);
+          this.meleeAttackSystem.update(mouseWorldPos, playerCenter, currentTime);
+        }
       }
     }
     
@@ -1596,14 +1599,16 @@ export class BaseGameScene extends PrologueScene {
     }
     
     // 渲染战斗警示圆圈和滑动刀光轨迹
-    if (this.combatSystem && this.combatSystem.isInCombat() && this.playerEntity) {
+    if (this.combatSystem && this.combatSystem.isInCombat() && this.playerEntity && !this.playerEntity.dead) {
       this.meleeAttackSystem.renderCombatAlertCircle(ctx, this.camera);
     }
-    if (this.meleeAttackSystem.sliceTrail && this.meleeAttackSystem.sliceTrail.length > 1) {
+    if (!this.playerEntity?.dead && this.meleeAttackSystem.sliceTrail && this.meleeAttackSystem.sliceTrail.length > 1) {
       this.meleeAttackSystem.renderSliceTrail(ctx);
     }
-    // 渲染刀光/箭光特效
-    this.meleeAttackSystem.renderSectorSlashEffects(ctx);
+    // 渲染刀光/箭光特效（灵魂状态时不渲染攻击范围）
+    if (!this.playerEntity?.dead) {
+      this.meleeAttackSystem.renderSectorSlashEffects(ctx);
+    }
     
     // 渲染敌人武器（已禁用）
     // 敌人武器渲染已禁用

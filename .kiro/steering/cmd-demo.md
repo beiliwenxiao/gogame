@@ -158,3 +158,61 @@ cmd/demo/
 3. 新增消息类型需在 `main.go` 的 const 块中声明，并在 `handlers.go` 的 switch 中注册
 4. 篝火位置由后端 `CampfireX/Y` 常量决定，前端通过 `arena_state` 消息接收
 5. 状态同步采用增量模式（`doStateSync` 对比 `lastSync` 快照），避免全量广播
+
+
+## 灵魂状态开发注意事项
+
+### dead 标志的分布与检查
+- 玩家灵魂状态用 `entity.dead` 布尔值标记，不是独立状态机
+- `attackTarget()` 和 `castSkill()` 各自有独立的 `dead` 检查，但**交互入口（如 `handleEnemySelection`）也必须加检查**，否则死亡状态下仍可选中目标并显示高亮
+- 修复模式：`onPlayerDied` 处理自己死亡时，除了视觉（透明度、overlay），还要清除所有交互状态（`selectedTarget = null` 等）
+
+### ArenaScene 继承链
+- `ArenaScene → BaseGameScene → PrologueScene → Scene`
+- **ArenaScene 继承 BaseGameScene**，不是直接继承 PrologueScene
+- `BaseGameScene` 里有完整的渲染管线、战斗系统、UI 面板等，ArenaScene 在此基础上扩展多人联网逻辑
+- 搜索 ArenaScene 的渲染逻辑时，看 `ArenaScene.renderWorldObjects`（覆写）和 `BaseGameScene.renderEntity`（继承）
+
+### 踩坑：PowerShell Select-String 多模式搜索
+- `Select-String -Pattern "a|b"` 中的 `|` 有时被 shell 解析为管道，导致结果不完整
+- 建议改用 `-Pattern "a" , "b"` 或用 `grepSearch` 工具替代
+
+
+## 临时视觉效果的标准模式
+
+ArenaScene 中临时效果（如技能范围指示器、NPC 白骨）统一用以下模式：
+
+1. constructor 里初始化数组：`this.boneCorpses = []`
+2. 触发时 push `{x, y, life, maxLife, ...}`
+3. `update` 里用 `filter` 倒计时：`b.life -= deltaTime; return b.life > 0`
+4. `renderWorldObjects` 里 push 带 `render` 回调的对象进 `renderQueue`，参与 Y 轴深度排序
+5. `exit` 里清空数组
+
+淡出效果：`life < fadeThreshold` 时 `alpha = life / fadeThreshold`，用 `ctx.globalAlpha` 应用。
+
+新增临时效果时参考 `skillRangeIndicators`（范围指示器）或 `boneCorpses`（白骨）的实现。
+
+
+## 新增消息类型的完整流程
+
+1. `main.go` const 块声明常量（如 `MsgCampfireTick = "campfire_tick"`）
+2. `arena.go` 里用 `BroadcastAll` 推送
+3. 前端 `app.js` 注册 `ws.on('campfire_tick', (data) => arena.onCampfireTick(data))`
+4. `ArenaScene.js` 实现对应的 `onXxx(data)` 方法
+- 注意：`handlers.go` 只处理客户端→服务端的消息，服务端推送不需要在这里注册
+
+## arenaTick 定时器模式
+
+- 多个 `time.NewTicker` 并行跑在同一个 `select` 里，新增定时任务只需加一个 ticker + case
+- 短周期倒计时用本地变量维护（如 `campfireCountdown`），复活触发时重置，不需要持久化
+
+## 2.5D 地面圆圈画法
+
+- 等距视角下地面圆圈用椭圆：`ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI*2)`
+- 水平半径是垂直半径的 2 倍，视觉上贴地（如 rx=100, ry=50）
+- 配合 `createRadialGradient` 做内部光晕，中心透明度高、边缘渐变到 0
+
+## Canvas 倒计时闪烁技巧
+
+- `Math.floor(Date.now() / 400) % 2 === 0` 实现 400ms 周期闪烁
+- 不需要额外状态变量，每帧渲染时直接计算，适合倒计时最后 N 秒的警示效果
