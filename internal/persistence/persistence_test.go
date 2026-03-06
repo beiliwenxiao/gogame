@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"gfgame/internal/engine"
+	"gogame/internal/engine"
 )
 
 // --- In-memory DataStore mock ---

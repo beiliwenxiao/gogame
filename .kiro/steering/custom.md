@@ -11,7 +11,7 @@ inclusion: always
 - 不要每次都写文档。除非用户要求，否则不要写文档
 - 没有用户同意，不允许创建测试页面
 - 调试完成后，如果要删除调试信息，要先询问用户是否同意删除，不要自动删除
-- gfgame是后端引擎，html5-mmrpg-game是前端引擎
+- gogame是后端引擎，html5-mmrpg-game是前端引擎
 - cmd/demo中，需要包含html5-mmrpg-game的代码，尽量采用html5-mmrpg-game的代码
 - cmd/demo的前端，尽量使用html5-mmrpg-game/src/prologue中的代码，不要自己另外写。
 - 添加和修改前端页面时，先参考一下 #html5-mmrpg-game/docs/usage_guide.md

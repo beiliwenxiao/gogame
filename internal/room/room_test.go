@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"gfgame/internal/engine"
+	"gogame/internal/engine"
 )
 
 // mockSession implements Session for testing.

@@ -3,7 +3,7 @@ package gamemap
 import (
 	"testing"
 
-	"gfgame/internal/engine"
+	"gogame/internal/engine"
 )
 
 // helper: create a simple walkable layer.

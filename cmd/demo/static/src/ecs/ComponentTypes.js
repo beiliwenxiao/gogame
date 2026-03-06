@@ -1,6 +1,6 @@
 /**
  * ComponentTypes.js
- * ECS 组件类型常量 - 与后端 gfgame/internal/ecs 保持一致
+ * ECS 组件类型常量 - 与后端 gogame/internal/ecs 保持一致
  * 
  * 后端 Go 定义：
  *   CompPosition        = 1

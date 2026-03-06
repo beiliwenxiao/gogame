@@ -6,7 +6,7 @@ import (
 	"math"
 	"sync"
 
-	"gfgame/internal/engine"
+	"gogame/internal/engine"
 )
 
 // SpatialIndex 提供对三维空间中实体位置的空间查询。

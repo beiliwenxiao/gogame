@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"gfgame/internal/engine"
+	"gogame/internal/engine"
 )
 
 // Component 镜像引擎 ECS 的 Component 接口，供持久化模块使用。

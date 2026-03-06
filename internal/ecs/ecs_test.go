@@ -3,7 +3,7 @@ package ecs
 import (
 	"testing"
 
-	"gfgame/internal/engine"
+	"gogame/internal/engine"
 )
 
 // ---------------------------------------------------------------------------

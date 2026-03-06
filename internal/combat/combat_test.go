@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"gfgame/internal/engine"
-	"gfgame/internal/equipment"
+	"gogame/internal/engine"
+	"gogame/internal/equipment"
 )
 
 // ---------- helpers ----------

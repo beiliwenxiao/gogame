@@ -8,7 +8,7 @@ import (
 	"sync"
 	"unicode"
 
-	"gfgame/internal/engine"
+	"gogame/internal/engine"
 )
 
 // compact 编解码器返回的错误。

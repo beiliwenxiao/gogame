@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"gfgame/internal/engine"
-	"gfgame/internal/network"
+	"gogame/internal/engine"
+	"gogame/internal/network"
 )
 
 // ---------------------------------------------------------------------------

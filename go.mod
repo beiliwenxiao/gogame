@@ -1,4 +1,4 @@
-module gfgame
+module gogame
 
 go 1.25.0
 

@@ -1,5 +1,5 @@
 // Package main 提供修罗斗场多人对战 Demo 服务器。
-// 使用 SQLite 存储（可替换为 MySQL 等），基于 gfgame 引擎模块。
+// 使用 SQLite 存储（可替换为 MySQL 等），基于 gogame 引擎模块。
 package main
 
 import (
@@ -12,7 +12,7 @@ import (
 	"sync"
 	"syscall"
 
-	"gfgame/cmd/demo/store"
+	"gogame/cmd/demo/store"
 
 	"github.com/gorilla/websocket"
 )
@@ -28,9 +28,11 @@ const (
 	CampfireY    = 464.0 // 30x30等距地图中心: gridToScreen(14.5, 14.5) = (0, 464)
 	TickRate     = 30 // 每秒 tick 数（移动同步用）
 	StateSyncHz  = 5  // 状态同步频率（HP/MP/死亡等）
-	AOIRadius    = 500.0
-	MaxNPCCount  = 100 // NPC 上限
-	NPCAITickHz  = 2   // NPC AI 更新频率（每秒）
+	AOIRadius         = 500.0
+	MaxNPCCount       = 100  // NPC 上限
+	NPCAITickHz       = 2    // NPC AI 更新频率（每秒）
+	CampfireRadius    = 50.0 // 篝火复活范围（像素）
+	CampfireRespawnHz = 60   // 篝火复活间隔（秒）
 )
 
 // ---------- 消息类型 ----------

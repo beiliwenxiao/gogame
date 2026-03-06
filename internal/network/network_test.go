@@ -12,7 +12,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"gfgame/internal/engine"
+	"gogame/internal/engine"
 )
 
 // ---------- helpers ----------

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"gfgame/internal/engine"
+	"gogame/internal/engine"
 )
 
 // ---------- OperationDictionary tests ----------

@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"gfgame/internal/engine"
+	"gogame/internal/engine"
 )
 
 // ---------- mock plugin ----------

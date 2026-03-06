@@ -63,6 +63,9 @@ export class ArenaScene extends BaseGameScene {
             'u': 'up', 'd': 'down', 'l': 'left', 'r': 'right',
             'ul': 'up-left', 'ur': 'up-right', 'dl': 'down-left', 'dr': 'down-right'
         };
+
+        // 灵魂状态 UI
+        this._soulOverlay = null;
     }
 
     /**
@@ -292,7 +295,6 @@ export class ArenaScene extends BaseGameScene {
         
         // 插值远程玩家位置 + 同步行走动画
         for (const [id, entity] of this.remotePlayers) {
-            if (entity.dead) continue;
             if (entity.targetX !== undefined) {
                 const transform = entity.getComponent('transform');
                 if (transform) {
@@ -439,6 +441,8 @@ export class ArenaScene extends BaseGameScene {
      */
     attackTarget() {
         if (!this.selectedTarget || !this.ws) return;
+        // 灵魂状态不能攻击
+        if (this.playerEntity && this.playerEntity.dead) return;
         
         // 检查是否是 NPC 目标（负数 ID）
         const isNPC = this.selectedTarget < 0;
@@ -501,6 +505,8 @@ export class ArenaScene extends BaseGameScene {
      */
     castSkill(skillId) {
         if (!this.ws || !this.playerEntity) return;
+        // 灵魂状态不能施法
+        if (this.playerEntity.dead) return;
         
         const now = Date.now();
         const cd = this.skillCooldowns[skillId];
@@ -702,6 +708,52 @@ export class ArenaScene extends BaseGameScene {
         if (this.floatingTextManager) {
             this.floatingTextManager.addText(textX, textY, `${data.name} 被 ${data.killer} 击杀`, '#ff0000');
         }
+
+        // 自己死亡：显示灵魂状态提示
+        if (data.char_id === this.selfId) {
+            this._showSoulOverlay();
+        }
+    }
+
+    /** 显示灵魂状态遮罩提示 */
+    _showSoulOverlay() {
+        if (this._soulOverlay) return;
+        const overlay = document.createElement('div');
+        overlay.id = 'soul-overlay';
+        overlay.style.cssText = [
+            'position:fixed', 'top:0', 'left:0', 'width:100%', 'height:100%',
+            'display:flex', 'flex-direction:column', 'align-items:center', 'justify-content:center',
+            'pointer-events:none', 'z-index:999',
+            'background:rgba(80,100,180,0.25)'
+        ].join(';');
+        overlay.innerHTML = `
+            <div style="
+                background:rgba(20,30,60,0.85);
+                border:2px solid #7090ff;
+                border-radius:12px;
+                padding:24px 40px;
+                text-align:center;
+                color:#c0d0ff;
+                font-family:sans-serif;
+                box-shadow:0 0 30px rgba(80,120,255,0.5);
+            ">
+                <div style="font-size:28px;margin-bottom:8px;">👻 灵魂状态</div>
+                <div style="font-size:16px;line-height:1.8;">
+                    你已阵亡，现在是灵魂状态<br>
+                    请前往<span style="color:#ffd060;font-weight:bold;">篝火</span>旁等待复活<br>
+                    <span style="font-size:13px;color:#8090cc;">篝火每 60 秒复活附近的灵魂</span>
+                </div>
+            </div>`;
+        document.body.appendChild(overlay);
+        this._soulOverlay = overlay;
+    }
+
+    /** 隐藏灵魂状态遮罩 */
+    _hideSoulOverlay() {
+        if (this._soulOverlay) {
+            this._soulOverlay.remove();
+            this._soulOverlay = null;
+        }
     }
 
     onPlayerRespawn(data) {
@@ -734,6 +786,11 @@ export class ArenaScene extends BaseGameScene {
         }
         if (this.floatingTextManager) {
             this.floatingTextManager.addText(data.x, data.y, `${data.name} 复活了`, '#00ff00');
+        }
+
+        // 自己复活：隐藏灵魂状态提示
+        if (data.char_id === this.selfId) {
+            this._hideSoulOverlay();
         }
     }
 
@@ -1195,6 +1252,17 @@ export class ArenaScene extends BaseGameScene {
     renderCampfire(ctx) {
         const x = this.campfire.x;
         const y = this.campfire.y;
+
+        // 篝火复活范围圈（50px，虚线）
+        ctx.save();
+        ctx.setLineDash([6, 4]);
+        ctx.strokeStyle = 'rgba(255, 200, 80, 0.5)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(x, y - 15, 50, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
 
         // 燃烧的木材底座
         ctx.save();
@@ -1659,6 +1727,7 @@ export class ArenaScene extends BaseGameScene {
         this.npcEntities.clear();
         this.selectedTarget = null;
         this.skillRangeIndicators = [];
+        this._hideSoulOverlay();
         super.exit();
     }
 }

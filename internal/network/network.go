@@ -16,7 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
-	"gfgame/internal/engine"
+	"gogame/internal/engine"
 )
 
 // ---------- Session 接口及实现 ----------

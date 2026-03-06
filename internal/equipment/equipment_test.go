@@ -3,7 +3,7 @@ package equipment
 import (
 	"testing"
 
-	"gfgame/internal/engine"
+	"gogame/internal/engine"
 )
 
 func baseAttrs() Attributes {

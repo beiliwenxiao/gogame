@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"sync"
 
-	"gfgame/internal/engine"
+	"gogame/internal/engine"
 )
 
 // ---------- Errors ----------

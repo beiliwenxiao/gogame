@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"gfgame/internal/engine"
+	"gogame/internal/engine"
 )
 
 // 核心组件类型常量。

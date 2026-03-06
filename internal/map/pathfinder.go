@@ -5,7 +5,7 @@ import (
 	"errors"
 	"math"
 
-	"gfgame/internal/engine"
+	"gogame/internal/engine"
 )
 
 // Pathfinder errors.

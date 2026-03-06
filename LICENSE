@@ -2,12 +2,12 @@ MIT License
 
 Copyright (c) 2026 北里闻箫(beiliwenxiao)
 
-@project gfgame-MMRPG游戏后端引擎
+@project gogame-MMRPG游戏后端引擎
 @author 北里闻箫(beiliwenxiao)
 @date 2026-03-01
 @blog https://blog.csdn.net/beiliwenxiao
-@repository https://github.com/beiliwenxiao/gfgame
-@repository1 https://gitee.com/coderaaa/gfgame
+@repository https://github.com/beiliwenxiao/gogame
+@repository1 https://gitee.com/coderaaa/gogame
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

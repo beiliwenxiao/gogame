@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"gfgame/internal/engine"
+	"gogame/internal/engine"
 )
 
 // newTestAOI creates an AOIManager backed by a grid spatial index for testing.

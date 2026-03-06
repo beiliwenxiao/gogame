@@ -1,8 +1,8 @@
-# 技术设计文档：MMRPG 游戏引擎 (gfgame)
+# 技术设计文档：MMRPG 游戏引擎 (gogame)
 
 ## 概述
 
-gfgame 是基于 GoFrame 框架构建的 MMRPG 纯游戏后端引擎，核心卖点为千人同屏战斗。引擎采用 ECS（Entity-Component-System）架构，支持帧同步（Lockstep）与状态同步（State Sync）双模式，提供层次化地图系统、装备系统、战斗系统等核心模块。
+gogame 是轻量级 MMRPG 纯游戏后端引擎，核心卖点为千人同屏战斗。引擎采用 ECS（Entity-Component-System）架构，支持帧同步（Lockstep）与状态同步（State Sync）双模式，提供层次化地图系统、装备系统、战斗系统等核心模块。
 
 引擎作为纯后端服务，不包含任何前端逻辑。前端（如 html5-mmrpg-game）通过 WebSocket/TCP 协议与引擎通信，完全解耦。
 

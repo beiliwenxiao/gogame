@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"gfgame/internal/ecs"
-	"gfgame/internal/engine"
+	"gogame/internal/ecs"
+	"gogame/internal/engine"
 )
 
 // helper to create a basic SceneManager for tests.

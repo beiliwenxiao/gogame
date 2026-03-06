@@ -131,7 +131,7 @@ func (s *DemoServer) handleLeaveArena(session *PlayerSession) {
 }
 
 func (s *DemoServer) handleMove(session *PlayerSession, data json.RawMessage) {
-	if !session.inArena || session.dead {
+	if !session.inArena {
 		return
 	}
 	var req struct {
@@ -147,6 +147,7 @@ func (s *DemoServer) handleMove(session *PlayerSession, data json.RawMessage) {
 	if req.Direction != "" {
 		session.direction = req.Direction
 	}
+	// 死亡（灵魂状态）玩家也广播位置，让其他人看到灵魂移动
 	s.arena.Broadcast(ServerMessage{Type: MsgPlayerMoved, Data: map[string]interface{}{
 		"char_id": session.charID, "x": session.x, "y": session.y, "direction": session.direction,
 	}}, session.charID)
@@ -200,7 +201,6 @@ func (s *DemoServer) handleAttack(session *PlayerSession, data json.RawMessage) 
 			"char_id": req.TargetID, "name": target.charName,
 			"killer_id": session.charID, "killer": session.charName,
 		}})
-		go s.respawnPlayer(target)
 	}
 }
 
@@ -295,7 +295,6 @@ func (s *DemoServer) handleCastSkill(session *PlayerSession, data json.RawMessag
 				"char_id": t.charID, "name": t.charName,
 				"killer_id": session.charID, "killer": session.charName,
 			}})
-			go s.respawnPlayer(t)
 		}
 	}
 }
@@ -314,15 +313,10 @@ func (s *DemoServer) handleChat(session *PlayerSession, data json.RawMessage) {
 	}})
 }
 
-func (s *DemoServer) respawnPlayer(session *PlayerSession) {
-	time.Sleep(5 * time.Second)
-	if !session.inArena {
-		return
-	}
-	angle := rand.Float64() * 2 * math.Pi
-	d := 50.0 + rand.Float64()*100.0
-	session.x = math.Max(-ArenaWidth+30, math.Min(ArenaWidth-30, CampfireX+math.Cos(angle)*d))
-	session.y = math.Max(30, math.Min(ArenaHeight-30, CampfireY+math.Sin(angle)*d))
+// respawnPlayerAt 在指定位置复活玩家并广播
+func (s *DemoServer) respawnPlayerAt(session *PlayerSession, x, y float64) {
+	session.x = x
+	session.y = y
 	session.hp = session.maxHP
 	session.mp = session.maxMP
 	session.dead = false
@@ -331,11 +325,30 @@ func (s *DemoServer) respawnPlayer(session *PlayerSession) {
 		"x": session.x, "y": session.y,
 		"hp": session.hp, "max_hp": session.maxHP, "mp": session.mp, "max_mp": session.maxMP,
 	}})
-	log.Printf("玩家 %s 已复活", session.charName)
+	log.Printf("玩家 %s 在篝火处复活 (%.0f, %.0f)", session.charName, x, y)
+}
+
+// campfireRespawnTick 每60秒复活篝火附近50px内的所有死亡玩家
+func (s *DemoServer) campfireRespawnTick() {
+	s.arena.mu.Lock()
+	defer s.arena.mu.Unlock()
+	for _, p := range s.arena.players {
+		if !p.dead {
+			continue
+		}
+		dist := distance(p.x, p.y, CampfireX, CampfireY)
+		if dist <= CampfireRadius {
+			// 在篝火附近随机位置复活
+			angle := rand.Float64() * 2 * math.Pi
+			d := 20.0 + rand.Float64()*30.0
+			rx := math.Max(-ArenaWidth+30, math.Min(ArenaWidth-30, CampfireX+math.Cos(angle)*d))
+			ry := math.Max(30, math.Min(ArenaHeight-30, CampfireY+math.Sin(angle)*d))
+			s.respawnPlayerAt(p, rx, ry)
+		}
+	}
 }
 
 // arenaTick 竞技场状态同步 tick 循环
-// 每 1/TickRate 秒广播一次全量玩家状态，确保多端一致
 func (s *DemoServer) arenaTick() {
 	ticker := time.NewTicker(time.Second / StateSyncHz)
 	defer ticker.Stop()
@@ -348,6 +361,10 @@ func (s *DemoServer) arenaTick() {
 	aiTicker := time.NewTicker(time.Second / NPCAITickHz)
 	defer aiTicker.Stop()
 
+	// 篝火复活定时器：每60秒复活篝火附近的死亡玩家
+	campfireTicker := time.NewTicker(CampfireRespawnHz * time.Second)
+	defer campfireTicker.Stop()
+
 	// 首次立即刷新一波 NPC
 	s.spawnNPCWave()
 
@@ -359,6 +376,8 @@ func (s *DemoServer) arenaTick() {
 			s.npcAITick()
 		case <-ticker.C:
 			s.doStateSync()
+		case <-campfireTicker.C:
+			s.campfireRespawnTick()
 		}
 	}
 }
@@ -1048,12 +1067,7 @@ func (s *DemoServer) npcAITick() {
 				"name":    atk.targetName,
 				"killer":  atk.npcName,
 			}})
-			// 5秒后复活玩家
-			s.arena.mu.RLock()
-			if p, ok := s.arena.players[atk.targetID]; ok {
-				go s.respawnPlayer(p)
-			}
-			s.arena.mu.RUnlock()
+			// 玩家进入灵魂状态，等待篝火复活
 		}
 	}
 }

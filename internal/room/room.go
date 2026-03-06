@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"gfgame/internal/engine"
+	"gogame/internal/engine"
 )
 
 // Default values.

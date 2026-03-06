@@ -4,7 +4,7 @@ import (
 	"math"
 	"sync"
 
-	"gfgame/internal/engine"
+	"gogame/internal/engine"
 )
 
 // AOIBoundaryZone 定义两个 AOI 管理器之间的边界区域。

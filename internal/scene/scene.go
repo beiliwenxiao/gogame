@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"gfgame/internal/aoi"
-	"gfgame/internal/ecs"
-	"gfgame/internal/engine"
+	"gogame/internal/aoi"
+	"gogame/internal/ecs"
+	"gogame/internal/engine"
 )
 
 // Default values.

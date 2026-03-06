@@ -6,7 +6,7 @@ import (
 	"errors"
 	"sync"
 
-	"gfgame/internal/engine"
+	"gogame/internal/engine"
 )
 
 // Errors returned by EquipmentSystem operations.

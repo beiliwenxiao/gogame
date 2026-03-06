@@ -7,7 +7,7 @@ import (
 	"errors"
 	"sync"
 
-	"gfgame/internal/engine"
+	"gogame/internal/engine"
 )
 
 // Errors returned by MapManager operations.
