@@ -1072,22 +1072,4 @@ func (s *DemoServer) npcAITick() {
 	}
 }
 
-func (s *DemoServer) respawnNPC(npcID int64) {
-	time.Sleep(5 * time.Second)
 
-	s.arena.mu.Lock()
-	npc, ok := s.arena.npcs[npcID]
-	if !ok {
-		s.arena.mu.Unlock()
-		return
-	}
-	npc.HP = npc.MaxHP
-	npc.Dead = false
-	state := s.makeNPCState(npc)
-	s.arena.mu.Unlock()
-
-	s.arena.BroadcastAll(ServerMessage{Type: MsgNPCSpawn, Data: map[string]interface{}{
-		"npcs": []map[string]interface{}{state},
-	}})
-	log.Printf("NPC %s 已复活", npc.Name)
-}

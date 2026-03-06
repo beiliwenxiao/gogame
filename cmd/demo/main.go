@@ -30,7 +30,7 @@ const (
 	StateSyncHz  = 5  // 状态同步频率（HP/MP/死亡等）
 	AOIRadius         = 500.0
 	MaxNPCCount       = 100  // NPC 上限
-	NPCAITickHz       = 2    // NPC AI 更新频率（每秒）
+	NPCAITickHz       = 5    // NPC AI 更新频率（每秒）
 	CampfireRadius    = 50.0 // 篝火复活范围（像素）
 	CampfireRespawnHz = 60   // 篝火复活间隔（秒）
 )

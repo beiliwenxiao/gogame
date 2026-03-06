@@ -330,7 +330,7 @@ export class ArenaScene extends BaseGameScene {
             }
         }
         
-        // 插值 NPC 位置（与远程玩家相同逻辑）
+        // 插值 NPC 位置 - 基于速度的线性插值，避免跳跃感
         for (const [id, entity] of this.npcEntities) {
             if (entity.dead) continue;
             if (entity.targetX !== undefined) {
@@ -340,24 +340,31 @@ export class ArenaScene extends BaseGameScene {
                     const dy = entity.targetY - transform.position.y;
                     const dist = Math.sqrt(dx * dx + dy * dy);
                     
-                    if (dist > 300) {
+                    if (dist > 400) {
+                        // 距离过远直接瞬移（传送/重生等情况）
                         transform.position.x = entity.targetX;
                         transform.position.y = entity.targetY;
-                    } else if (dist < 1) {
-                        transform.position.x = entity.targetX;
-                        transform.position.y = entity.targetY;
-                    } else {
-                        const lerp = 1 - Math.pow(0.9, deltaTime * 60);
-                        transform.position.x += dx * lerp;
-                        transform.position.y += dy * lerp;
+                    } else if (dist > 0.5) {
+                        // 基于 NPC speed 属性做线性插值，匀速移动
+                        const stats = entity.getComponent('stats');
+                        const speed = (stats && stats.speed) ? stats.speed : 60;
+                        // 每帧最大移动距离 = speed * deltaTime，额外乘以1.5补偿网络延迟
+                        const maxMove = speed * deltaTime * 1.5;
+                        if (maxMove >= dist) {
+                            transform.position.x = entity.targetX;
+                            transform.position.y = entity.targetY;
+                        } else {
+                            transform.position.x += (dx / dist) * maxMove;
+                            transform.position.y += (dy / dist) * maxMove;
+                        }
                     }
                     
                     const sprite = entity.getComponent('sprite');
                     if (sprite) {
                         const timeSinceMove = Date.now() - (entity._lastMoveTime || 0);
-                        if (dist > 2 && timeSinceMove < 600) {
+                        if (dist > 2 && timeSinceMove < 800) {
                             sprite.isWalking = true;
-                        } else if (dist <= 2 || timeSinceMove >= 600) {
+                        } else if (dist <= 2 || timeSinceMove >= 800) {
                             sprite.isWalking = false;
                         }
                     }
@@ -873,13 +880,15 @@ export class ArenaScene extends BaseGameScene {
                         if (npc.hp !== undefined) stats.hp = npc.hp;
                         if (npc.max_hp !== undefined) stats.maxHp = npc.max_hp;
                     }
-                    if (npc.dead !== undefined) {
-                        entity.dead = npc.dead;
-                        const sprite = entity.getComponent('sprite');
-                        if (sprite) {
-                            sprite.alpha = npc.dead ? 0.3 : 1.0;
-                            if (npc.dead) sprite.isWalking = false;
+                    // NPC 死亡时直接移除
+                    if (npc.dead) {
+                        if (this.selectedTarget === npc.id) this.selectedTarget = null;
+                        const idx = this.entities.indexOf(entity);
+                        if (idx >= 0) this.entities.splice(idx, 1);
+                        if (this.engine && this.engine.entityManager) {
+                            this.engine.entityManager.removeEntity(entity);
                         }
+                        this.npcEntities.delete(npc.id);
                     }
                 }
             }
@@ -975,13 +984,6 @@ export class ArenaScene extends BaseGameScene {
         const entity = this.npcEntities.get(npcId);
         if (!entity) return;
         
-        entity.dead = true;
-        const stats = entity.getComponent('stats');
-        if (stats) stats.hp = 0;
-        
-        const sprite = entity.getComponent('sprite');
-        if (sprite) { sprite.alpha = 0.3; sprite.isWalking = false; }
-        
         // 显示击杀信息
         const transform = entity.getComponent('transform');
         if (transform && this.floatingTextManager) {
@@ -993,21 +995,18 @@ export class ArenaScene extends BaseGameScene {
             );
         }
         
-        // 如果当前选中的是这个 NPC，取消选中
+        // 取消选中
         if (this.selectedTarget === npcId) {
             this.selectedTarget = null;
         }
         
-        // 2秒后移除死亡NPC实体（后端5秒后会通过npc_spawn复活）
-        setTimeout(() => {
-            const e = this.npcEntities.get(npcId);
-            if (e && e.dead) {
-                if (this.engine && this.engine.entityManager) {
-                    this.engine.entityManager.removeEntity(e);
-                }
-                this.npcEntities.delete(npcId);
-            }
-        }, 2000);
+        // 立即移除死亡 NPC 实体
+        const idx = this.entities.indexOf(entity);
+        if (idx >= 0) this.entities.splice(idx, 1);
+        if (this.engine && this.engine.entityManager) {
+            this.engine.entityManager.removeEntity(entity);
+        }
+        this.npcEntities.delete(npcId);
     }
 
     /**
