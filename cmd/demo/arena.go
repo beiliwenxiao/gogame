@@ -27,6 +27,15 @@ func distance(x1, y1, x2, y2 float64) float64 {
 	return math.Sqrt(dx*dx + dy*dy)
 }
 
+// isInSafeZone 判断坐标是否在篝火安全区内（2.5D 椭圆）
+func isInSafeZone(x, y float64) bool {
+	dx := x - CampfireX
+	dy := y - CampfireY
+	rx := float64(CampfireRadius)
+	ry := float64(CampfireRadius) / 2 // 2.5D：垂直半径 = 水平半径 / 2
+	return (dx*dx)/(rx*rx)+(dy*dy)/(ry*ry) <= 1
+}
+
 func calcDamage(atk, def float64) float64 {
 	base := atk - def*0.5
 	if base < 1 {
@@ -107,7 +116,7 @@ func (s *DemoServer) handleEnterArena(session *PlayerSession) {
 	players := s.getArenaPlayersState()
 	session.Send(ServerMessage{Type: MsgArenaState, Data: map[string]interface{}{
 		"players": players, "self_id": session.charID,
-		"campfire": map[string]float64{"x": CampfireX, "y": CampfireY},
+		"campfire": map[string]interface{}{"x": CampfireX, "y": CampfireY, "radius": CampfireRadius},
 		"arena":    map[string]float64{"width": ArenaWidth, "height": ArenaHeight},
 		"skills":   skills,
 		"equipments": equips,
@@ -170,6 +179,11 @@ func (s *DemoServer) handleAttack(session *PlayerSession, data json.RawMessage) 
 	if !ok || target.dead {
 		return
 	}
+	// 安全区检查：攻击者在安全区内不能攻击
+	if isInSafeZone(session.x, session.y) {
+		session.Send(ServerMessage{Type: MsgError, Data: "安全区内禁止攻击"})
+		return
+	}
 	dist := distance(session.x, session.y, target.x, target.y)
 	maxRange := session.weaponAttackRange
 	if maxRange <= 0 {
@@ -207,6 +221,11 @@ func (s *DemoServer) handleAttack(session *PlayerSession, data json.RawMessage) 
 
 func (s *DemoServer) handleCastSkill(session *PlayerSession, data json.RawMessage) {
 	if !session.inArena || session.dead {
+		return
+	}
+	// 安全区内禁止使用技能
+	if isInSafeZone(session.x, session.y) {
+		session.Send(ServerMessage{Type: MsgError, Data: "安全区内禁止使用技能"})
 		return
 	}
 	var req struct {
@@ -589,9 +608,9 @@ func (s *DemoServer) spawnNPCWave() {
 		s.arena.npcSeq++
 		npcID := -s.arena.npcSeq // 负数 ID 区分玩家
 
-		// 随机位置（在竞技场范围内，避开火堆中心）
+		// 随机位置（在竞技场范围内，避开安全区）
 		angle := rand.Float64() * 2 * math.Pi
-		dist := 150.0 + rand.Float64()*600.0
+		dist := CampfireRadius + 50.0 + rand.Float64()*500.0
 		x := CampfireX + math.Cos(angle)*dist
 		y := CampfireY + math.Sin(angle)*dist
 		x = math.Max(-ArenaWidth+30, math.Min(ArenaWidth-30, x))
@@ -682,6 +701,11 @@ func (s *DemoServer) handleAttackNPC(session *PlayerSession, data json.RawMessag
 	if !session.inArena || session.dead {
 		return
 	}
+	// 安全区内禁止攻击
+	if isInSafeZone(session.x, session.y) {
+		session.Send(ServerMessage{Type: MsgError, Data: "安全区内禁止攻击"})
+		return
+	}
 	var req struct {
 		TargetID int64 `json:"target_id"`
 	}
@@ -749,6 +773,11 @@ func (s *DemoServer) handleAttackNPC(session *PlayerSession, data json.RawMessag
 // handleCastSkillNPC 处理玩家对 NPC 释放技能
 func (s *DemoServer) handleCastSkillNPC(session *PlayerSession, data json.RawMessage) {
 	if !session.inArena || session.dead {
+		return
+	}
+	// 安全区内禁止使用技能
+	if isInSafeZone(session.x, session.y) {
+		session.Send(ServerMessage{Type: MsgError, Data: "安全区内禁止使用技能"})
 		return
 	}
 	var req struct {
@@ -897,7 +926,7 @@ func (s *DemoServer) npcAITick() {
 	// 收集存活玩家
 	alivePlayers := make([]*PlayerSession, 0, len(s.arena.players))
 	for _, p := range s.arena.players {
-		if !p.dead {
+		if !p.dead && !isInSafeZone(p.x, p.y) {
 			alivePlayers = append(alivePlayers, p)
 		}
 	}
@@ -937,8 +966,13 @@ func (s *DemoServer) npcAITick() {
 		if npc.FearUntil > 0 && now < npc.FearUntil {
 			// 恐惧中：向远离方向逃跑
 			moveSpeed := npc.Speed * dt * 1.5 // 恐惧时跑得更快
-			npc.X += npc.FearDirX * moveSpeed
-			npc.Y += npc.FearDirY * moveSpeed
+			newX := npc.X + npc.FearDirX*moveSpeed
+			newY := npc.Y + npc.FearDirY*moveSpeed
+			// NPC 不能进入安全区
+			if !isInSafeZone(newX, newY) {
+				npc.X = newX
+				npc.Y = newY
+			}
 			// 边界限制
 			npc.X = math.Max(-ArenaWidth+30, math.Min(ArenaWidth-30, npc.X))
 			npc.Y = math.Max(30, math.Min(ArenaHeight-30, npc.Y))
@@ -985,8 +1019,13 @@ func (s *DemoServer) npcAITick() {
 				if moveSpeed > d {
 					moveSpeed = d
 				}
-				npc.X += (dx / d) * moveSpeed
-				npc.Y += (dy / d) * moveSpeed
+				newX := npc.X + (dx/d)*moveSpeed
+				newY := npc.Y + (dy/d)*moveSpeed
+				// NPC 不能进入安全区
+				if !isInSafeZone(newX, newY) {
+					npc.X = newX
+					npc.Y = newY
+				}
 				// 回归时回血
 				if npc.HP < npc.MaxHP {
 					npc.HP = math.Min(npc.MaxHP, npc.HP+npc.MaxHP*0.05*dt)
@@ -1042,8 +1081,16 @@ func (s *DemoServer) npcAITick() {
 				moveSpeed = d - npc.AttackRange*0.8
 			}
 			if moveSpeed > 0 {
-				npc.X += (dx / d) * moveSpeed
-				npc.Y += (dy / d) * moveSpeed
+				newX := npc.X + (dx/d)*moveSpeed
+				newY := npc.Y + (dy/d)*moveSpeed
+				// NPC 不能进入安全区
+				if !isInSafeZone(newX, newY) {
+					npc.X = newX
+					npc.Y = newY
+				} else {
+					// 停在安全区边界外
+					continue
+				}
 				// 计算方向
 				dir := "d"
 				if math.Abs(dx) > math.Abs(dy) {

@@ -789,6 +789,9 @@ export class CombatSystem {
    * @param {string} damageType - 伤害类型（可选），如"刺击"、"扫击"、"火焰掌"等
    */
   applyDamage(target, damage, knockbackDir = null, damageType = null) {
+    // 安全区内禁止造成伤害（由 ArenaScene 设置）
+    if (this._safeZoneDisabled) return;
+    
     const stats = target.getComponent('stats');
     const transform = target.getComponent('transform');
     
@@ -1099,6 +1102,8 @@ export class CombatSystem {
    */
   handleSkillInput(currentTime, entities) {
     if (!this.inputManager || !this.playerEntity) return;
+    // 安全区内禁止使用技能（由 ArenaScene 设置）
+    if (this._safeZoneDisabled) return;
     
     const combat = this.playerEntity.getComponent('combat');
     if (!combat) return;
@@ -2039,13 +2044,13 @@ export class CombatSystem {
     // 清除选中的目标
     this.clearTarget();
     
-    // 这里应该显示复活界面
-    // 实际实现中应该通过事件系统通知UI层
-    // 暂时只是标记状态
+    // 标记死亡状态
     player.isDead = true;
     
-    // 可以添加复活逻辑
-    // 例如：5秒后自动复活
+    // 联网模式下（_arenaMode）由后端控制复活，不自动回血
+    if (this._arenaMode) return;
+    
+    // 单机模式：5秒后自动复活
     setTimeout(() => {
       this.revivePlayer(player);
     }, 5000);

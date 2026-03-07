@@ -26,6 +26,7 @@ export class ArenaScene extends BaseGameScene {
         this.campfire = {
             x: 0, y: 464,
             lit: true,
+            radius: 200, // 安全区半径（由后端下发）
             fireImage: null,
             imageLoaded: false,
             frameWidth: 658 / 4,
@@ -70,6 +71,9 @@ export class ArenaScene extends BaseGameScene {
 
         // NPC 死亡白骨列表 [{x, y, life, maxLife}]
         this.boneCorpses = [];
+
+        // 右键移动目标指示器 [{x, y, life, maxLife}]
+        this.moveTargetIndicators = [];
     }
 
     /**
@@ -98,6 +102,9 @@ export class ArenaScene extends BaseGameScene {
             document.getElementById = origGetElement;
         }
         
+        // 联网模式：禁用 CombatSystem 的单机自动复活
+        if (this.combatSystem) this.combatSystem._arenaMode = true;
+        
         // 用实际 canvas 尺寸覆盖逻辑尺寸，避免双重压缩
         const canvas = document.getElementById(this.canvasId);
         if (canvas) {
@@ -119,6 +126,7 @@ export class ArenaScene extends BaseGameScene {
             if (data.campfire) {
                 this.campfire.x = data.campfire.x !== undefined ? data.campfire.x : 0;
                 this.campfire.y = data.campfire.y !== undefined ? data.campfire.y : 464;
+                if (data.campfire.radius) this.campfire.radius = data.campfire.radius;
             }
             this.arenaSize = data.arena || { width: 800, height: 600 };
             this.skills = data.skills || [];
@@ -383,12 +391,47 @@ export class ArenaScene extends BaseGameScene {
             b.life -= deltaTime;
             return b.life > 0;
         });
+
+        // 检测右键点击 → 添加移动目标指示器
+        if (this.inputManager && this.inputManager.isMouseClicked() && this.inputManager.getMouseButton() === 2) {
+            const clickPos = this.inputManager.getMouseWorldPosition(this.camera);
+            if (clickPos) {
+                // 清除旧指示器，只保留最新一个
+                this.moveTargetIndicators = [{
+                    x: clickPos.x, y: clickPos.y,
+                    life: 1.0, maxLife: 1.0
+                }];
+            }
+        }
+
+        // 更新移动目标指示器倒计时
+        this.moveTargetIndicators = this.moveTargetIndicators.filter(m => {
+            m.life -= deltaTime;
+            return m.life > 0;
+        });
         
         // 更新火堆动画
         this.updateCampfireAnimation(deltaTime);
         
+        // 安全区内禁用单机战斗系统（MeleeAttackSystem 滑动攻击 + CombatSystem 技能输入）
+        let safeZoneDisabled = false;
+        if (this.playerEntity) {
+            const t = this.playerEntity.getComponent('transform');
+            if (t && this.isInSafeZone(t.position.x, t.position.y)) {
+                safeZoneDisabled = true;
+                if (this.meleeAttackSystem) this.meleeAttackSystem._safeZoneDisabled = true;
+                if (this.combatSystem) this.combatSystem._safeZoneDisabled = true;
+            }
+        }
+        
         // 调用父类 update
         super.update(deltaTime);
+        
+        // 恢复单机战斗系统
+        if (safeZoneDisabled) {
+            if (this.meleeAttackSystem) this.meleeAttackSystem._safeZoneDisabled = false;
+            if (this.combatSystem) this.combatSystem._safeZoneDisabled = false;
+        }
     }
 
     /**
@@ -451,6 +494,15 @@ export class ArenaScene extends BaseGameScene {
      * 后端公式：base = attack - defense*0.5, min 1, variance 0.85~1.15
      * 暴击率：普攻10%, 技能15%, 暴击倍率1.5x
      */
+    // 判断坐标是否在篝火安全区内
+    isInSafeZone(x, y) {
+        const dx = x - this.campfire.x;
+        const dy = y - this.campfire.y;
+        const rx = this.campfire.radius;
+        const ry = this.campfire.radius / 2; // 2.5D 椭圆：垂直 = 水平 / 2
+        return (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry) <= 1;
+    }
+
     attackTarget() {
         if (!this.selectedTarget || !this.ws) return;
         // 灵魂状态不能攻击
@@ -462,6 +514,20 @@ export class ArenaScene extends BaseGameScene {
             ? this.npcEntities.get(this.selectedTarget)
             : this.remotePlayers.get(this.selectedTarget);
         if (!entity || entity.dead) return;
+        
+        // 安全区检查：安全区内禁止攻击
+        if (this.playerEntity) {
+            const selfT = this.playerEntity.getComponent('transform');
+            if (selfT && this.isInSafeZone(selfT.position.x, selfT.position.y)) {
+                if (this.floatingTextManager) {
+                    this.floatingTextManager.addText(
+                        selfT.position.x, selfT.position.y - 20,
+                        '安全区内禁止攻击', '#ffaa00'
+                    );
+                }
+                return;
+            }
+        }
         
         // 前端范围预判
         if (this.playerEntity) {
@@ -526,6 +592,17 @@ export class ArenaScene extends BaseGameScene {
         
         const transform = this.playerEntity.getComponent('transform');
         if (!transform) return;
+        
+        // 安全区内禁止使用技能
+        if (this.isInSafeZone(transform.position.x, transform.position.y)) {
+            if (this.floatingTextManager) {
+                this.floatingTextManager.addText(
+                    transform.position.x, transform.position.y - 20,
+                    '安全区内禁止使用技能', '#ffaa00'
+                );
+            }
+            return;
+        }
         
         // 前端 MP 预判（对齐后端 handleCastSkill 的 MP 检查）
         const skill = this.skills.find(s => s.id === skillId);
@@ -730,9 +807,12 @@ export class ArenaScene extends BaseGameScene {
             this.floatingTextManager.addText(textX, textY, `${data.name} 被 ${data.killer} 击杀`, '#ff0000');
         }
 
-        // 自己死亡：清除选中目标、显示灵魂状态提示
+        // 自己死亡：清除选中目标、停止打坐、显示灵魂状态提示
         if (data.char_id === this.selfId) {
             this.selectedTarget = null;
+            if (this.meditationSystem && this.meditationSystem.isActive()) {
+                this.meditationSystem.stop();
+            }
             this._showSoulOverlay();
         }
     }
@@ -1121,8 +1201,8 @@ export class ArenaScene extends BaseGameScene {
         // 灵魂状态不允许选中目标（不显示攻击范围）
         if (this.playerEntity.dead) return;
         
-        // 只在鼠标点击且未被 UI 处理时选中
-        if (!this.inputManager.isMouseClicked() || this.inputManager.isMouseClickHandled()) return;
+        // 只在鼠标左键点击且未被 UI 处理时选中（右键是移动）
+        if (!this.inputManager.isMouseClicked() || this.inputManager.getMouseButton() !== 0 || this.inputManager.isMouseClickHandled()) return;
         
         const mouseWorldPos = this.inputManager.getMouseWorldPosition(this.camera);
         if (!mouseWorldPos) return;
@@ -1153,6 +1233,18 @@ export class ArenaScene extends BaseGameScene {
         }
         
         if (closestEntity) {
+            // 安全区内禁止选中任何目标
+            const selfT = this.playerEntity.getComponent('transform');
+            if (selfT && this.isInSafeZone(selfT.position.x, selfT.position.y)) {
+                if (this.floatingTextManager) {
+                    this.floatingTextManager.addText(
+                        selfT.position.x, selfT.position.y - 20,
+                        '安全区内禁止战斗', '#ffaa00'
+                    );
+                }
+                this.inputManager.markMouseClickHandled();
+                return;
+            }
             this.selectedTarget = closestEntity.id;
             // 标记点击已处理，防止移动系统响应
             this.inputManager.markMouseClickHandled();
@@ -1313,6 +1405,15 @@ export class ArenaScene extends BaseGameScene {
             });
         }
 
+        // 添加移动目标指示器
+        for (const m of this.moveTargetIndicators) {
+            renderQueue.push({
+                type: 'moveTarget',
+                y: m.y,
+                render: () => this._renderMoveTargetIndicator(ctx, m)
+            });
+        }
+
         // 添加火堆
         if (this.campfire) {
             renderQueue.push({
@@ -1401,16 +1502,43 @@ export class ArenaScene extends BaseGameScene {
     }
 
     /**
+     * 渲染移动目标指示器（2.5D 等距椭圆）
+     */
+    _renderMoveTargetIndicator(ctx, m) {
+        const alpha = m.life < 0.3 ? m.life / 0.3 : 1;
+        const rx = 12;
+        const ry = 6; // 2.5D 等距：垂直 = 水平 / 2
+
+        ctx.save();
+        ctx.globalAlpha = alpha * 0.7;
+
+        // 外圈
+        ctx.strokeStyle = '#00ff88';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.ellipse(m.x, m.y, rx, ry, 0, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // 内部填充光晕
+        ctx.fillStyle = 'rgba(0, 255, 136, 0.2)';
+        ctx.beginPath();
+        ctx.ellipse(m.x, m.y, rx, ry, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+    }
+
+    /**
      * 渲染火堆
      */
     renderCampfire(ctx) {
         const x = this.campfire.x;
         const y = this.campfire.y;
 
-        // 篝火复活范围圈 - 2.5D 等距椭圆（水平半径100，垂直半径50）
+        // 篝火安全区范围圈 - 2.5D 等距椭圆
         ctx.save();
-        const rx = 100;
-        const ry = 50; // 2.5D：垂直方向压缩为水平的一半
+        const rx = this.campfire.radius;
+        const ry = this.campfire.radius / 2; // 2.5D：垂直方向压缩为水平的一半
         ctx.setLineDash([8, 5]);
         ctx.strokeStyle = 'rgba(255, 200, 80, 0.55)';
         ctx.lineWidth = 1.8;
@@ -1426,6 +1554,12 @@ export class ArenaScene extends BaseGameScene {
         ctx.beginPath();
         ctx.ellipse(x, y - 10, rx, ry, 0, 0, Math.PI * 2);
         ctx.fill();
+        // "安全区" 文字标识
+        ctx.font = '11px sans-serif';
+        ctx.fillStyle = 'rgba(255, 220, 120, 0.5)';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('— 安全区 —', x, y - 10 - ry - 8);
         ctx.setLineDash([]);
         ctx.restore();
 
@@ -1951,13 +2085,53 @@ export class ArenaScene extends BaseGameScene {
     }
 
 
+    // 覆写轻功：安全区内禁止使用
+    handleTeleport() {
+        if (this.playerEntity) {
+            const t = this.playerEntity.getComponent('transform');
+            if (t && this.isInSafeZone(t.position.x, t.position.y)) {
+                // 仍需消费点击事件，避免触发移动
+                if (this.inputManager && this.inputManager.isCtrlClick()) {
+                    this.inputManager.markMouseClickHandled();
+                    if (this.floatingTextManager) {
+                        this.floatingTextManager.addText(
+                            t.position.x, t.position.y - 20,
+                            '安全区内禁止轻功', '#ffaa00'
+                        );
+                    }
+                }
+                return;
+            }
+        }
+        super.handleTeleport();
+    }
+
+    // 覆写武器投掷：安全区内禁止使用
+    handleWeaponThrow() {
+        if (this.playerEntity) {
+            const t = this.playerEntity.getComponent('transform');
+            if (t && this.isInSafeZone(t.position.x, t.position.y)) {
+                if (this.floatingTextManager) {
+                    this.floatingTextManager.addText(
+                        t.position.x, t.position.y - 20,
+                        '安全区内禁止投掷', '#ffaa00'
+                    );
+                }
+                return;
+            }
+        }
+        super.handleWeaponThrow();
+    }
+
     exit() {
         this.remotePlayers.clear();
         this.npcEntities.clear();
         this.selectedTarget = null;
         this.skillRangeIndicators = [];
         this.boneCorpses = [];
+        this.moveTargetIndicators = [];
         this._hideSoulOverlay();
+        if (this.combatSystem) this.combatSystem._arenaMode = false;
         super.exit();
     }
 }

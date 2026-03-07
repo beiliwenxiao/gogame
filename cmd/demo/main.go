@@ -31,7 +31,7 @@ const (
 	AOIRadius         = 500.0
 	MaxNPCCount       = 100  // NPC 上限
 	NPCAITickHz       = 5    // NPC AI 更新频率（每秒）
-	CampfireRadius    = 100.0 // 篝火复活范围（像素）
+	CampfireRadius    = 200.0 // 篝火安全区半径（像素）
 	CampfireRespawnHz = 30    // 篝火复活间隔（秒）
 )
 

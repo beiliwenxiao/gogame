@@ -97,7 +97,7 @@ export class MeleeAttackSystem {
       this.sectorAttackFlash -= 1 / 60;
     }
 
-    // 更新刀光/箭光特效
+    // 更新刀光/箭光特效（安全区内跳过碰撞检测，只更新动画）
     this.updateSectorSlashEffects(1 / 60);
 
     // 计算鼠标方向角度
@@ -114,6 +114,9 @@ export class MeleeAttackSystem {
       this.isSlicing = false;
       return;
     }
+
+    // 安全区内禁止攻击（由 ArenaScene 设置）
+    if (this._safeZoneDisabled) return;
 
     // 鼠标左键按住触发攻击
     if (this.inputManager.isMouseDown() && !this.inputManager.isMouseClickHandled()) {
@@ -343,6 +346,19 @@ export class MeleeAttackSystem {
     for (let i = this.sectorSlashEffects.length - 1; i >= 0; i--) {
       const e = this.sectorSlashEffects[i];
       e.age += deltaTime;
+      
+      // 安全区内跳过碰撞伤害检测
+      if (this._safeZoneDisabled) {
+        if (e.type === 'arrow') {
+          e.traveled += e.speed * deltaTime;
+          e.x += Math.cos(e.dir) * e.speed * deltaTime;
+          e.y += Math.sin(e.dir) * e.speed * deltaTime;
+        }
+        if (e.age >= e.maxAge) {
+          this.sectorSlashEffects.splice(i, 1);
+        }
+        continue;
+      }
       
       // 剑光碰撞检测
       if (e.type === 'slash' && e.damage && this.combatSystem) {
