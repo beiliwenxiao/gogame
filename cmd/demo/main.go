@@ -32,7 +32,7 @@ const (
 	MaxNPCCount       = 100  // NPC 上限
 	NPCAITickHz       = 5    // NPC AI 更新频率（每秒）
 	CampfireRadius    = 100.0 // 篝火复活范围（像素）
-	CampfireRespawnHz = 60    // 篝火复活间隔（秒）
+	CampfireRespawnHz = 30    // 篝火复活间隔（秒）
 )
 
 // ---------- 消息类型 ----------

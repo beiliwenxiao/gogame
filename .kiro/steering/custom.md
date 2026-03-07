@@ -46,3 +46,9 @@ inclusion: always
 
 - `go build . 2>&1` 在 Windows bash 里可能 exit code -1 但无输出（shell 重定向问题）
 - 检查 Go 文件语法优先用 `getDiagnostics` 工具，比跑 shell 命令更可靠
+
+
+### Bug 排查：后端数据正确但前端表现异常时
+- 确认后端数据无误后，立刻看 `BaseGameScene.update` 的调用链，逐个检查父类系统（CombatSystem、MeditationSystem 等）是否有修改相关状态的逻辑
+- 从 `update` 调用链自顶向下排查，比盲目 grep 关键词高效得多
+- 特别注意单机引擎自带的逻辑（如自动复活、自动回血）在多人联网场景下可能产生冲突

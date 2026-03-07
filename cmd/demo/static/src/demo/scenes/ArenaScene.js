@@ -666,6 +666,12 @@ export class ArenaScene extends BaseGameScene {
             if (stats) {
                 stats.hp = data.target_hp;
                 stats.maxHp = data.target_max_hp;
+                // NPC 血量归零时提前设置双标志，防止 CombatSystem 介入
+                if (data.target_is_npc && stats.hp <= 0) {
+                    targetEntity.dead = true;
+                    targetEntity.isDead = true;
+                    targetEntity.isDying = true;
+                }
             }
             
             // 浮动伤害文字（区分普攻/技能/暴击）
@@ -819,6 +825,9 @@ export class ArenaScene extends BaseGameScene {
             if (sprite) {
                 sprite.alpha = 1.0;
             }
+
+            // 复活银白色粒子光环
+            this._spawnRespawnParticles(data.x, data.y);
         }
         if (this.floatingTextManager) {
             this.floatingTextManager.addText(data.x, data.y, `${data.name} 复活了`, '#00ff00');
@@ -919,6 +928,8 @@ export class ArenaScene extends BaseGameScene {
                     }
                     // NPC 死亡时直接移除
                     if (npc.dead) {
+                        entity.isDead = true;
+                        entity.isDying = true;
                         if (this.selectedTarget === npc.id) this.selectedTarget = null;
                         const idx = this.entities.indexOf(entity);
                         if (idx >= 0) this.entities.splice(idx, 1);
@@ -1000,6 +1011,8 @@ export class ArenaScene extends BaseGameScene {
             // 存储后端 NPC ID（负数）
             entity.npcId = npc.id;
             entity.dead = npc.dead || false;
+            entity.isDead = entity.dead;
+            entity.isDying = entity.dead;
             if (entity.dead) {
                 const sprite = entity.getComponent('sprite');
                 if (sprite) { sprite.alpha = 0.3; sprite.isWalking = false; }
@@ -1020,6 +1033,11 @@ export class ArenaScene extends BaseGameScene {
         const npcId = data.npc_id || data.id;
         const entity = this.npcEntities.get(npcId);
         if (!entity) return;
+        
+        // 同步双标志，阻止 CombatSystem 单机复活逻辑
+        entity.dead = true;
+        entity.isDead = true;
+        entity.isDying = true;
         
         // 显示击杀信息
         const transform = entity.getComponent('transform');
@@ -1903,6 +1921,35 @@ export class ArenaScene extends BaseGameScene {
             }
         }
     }
+
+    /**
+     * 复活时银白色粒子光环效果
+     */
+    _spawnRespawnParticles(x, y) {
+        if (!this.particleSystem) return;
+        const colors = ['#e0e8ff', '#ffffff', '#c0d0ff', '#a0c0ff'];
+        const count = 8;
+        for (let i = 0; i < count; i++) {
+            const angle = (Math.PI * 2 * i) / count;
+            const speed = 60 + Math.random() * 40;
+            this.particleSystem.createEmitter({
+                position: { x, y },
+                rate: 12,
+                duration: 800,
+                particleConfig: {
+                    position: { x, y },
+                    velocity: { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed * 0.5 },
+                    life: 600,
+                    size: 3 + Math.random() * 2,
+                    color: colors[i % colors.length],
+                    alpha: 0.9,
+                    gravity: 0,
+                    friction: 0.92
+                }
+            });
+        }
+    }
+
 
     exit() {
         this.remotePlayers.clear();
