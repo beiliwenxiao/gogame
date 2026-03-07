@@ -330,18 +330,41 @@ func (s *DemoServer) respawnPlayerAt(session *PlayerSession, x, y float64) {
 
 // campfireRespawnTick 每60秒复活所有死亡玩家（在篝火附近随机位置）
 func (s *DemoServer) campfireRespawnTick() {
+	// 先在写锁内收集需要复活的玩家并更新状态，避免持锁时调用 BroadcastAll 导致死锁
+	type respawnInfo struct {
+		session *PlayerSession
+		x, y    float64
+	}
+	var toRespawn []respawnInfo
+
 	s.arena.mu.Lock()
-	defer s.arena.mu.Unlock()
 	for _, p := range s.arena.players {
 		if !p.dead {
 			continue
 		}
-		// 所有死亡玩家都在篝火附近复活，不限距离
 		angle := rand.Float64() * 2 * math.Pi
 		d := 20.0 + rand.Float64()*30.0
 		rx := math.Max(-ArenaWidth+30, math.Min(ArenaWidth-30, CampfireX+math.Cos(angle)*d))
 		ry := math.Max(30, math.Min(ArenaHeight-30, CampfireY+math.Sin(angle)*d))
-		s.respawnPlayerAt(p, rx, ry)
+		// 先更新状态
+		p.x = rx
+		p.y = ry
+		p.hp = p.maxHP
+		p.mp = p.maxMP
+		p.dead = false
+		toRespawn = append(toRespawn, respawnInfo{session: p, x: rx, y: ry})
+	}
+	s.arena.mu.Unlock()
+
+	// 释放锁后再广播（BroadcastAll 内部会拿读锁）
+	for _, r := range toRespawn {
+		s.arena.BroadcastAll(ServerMessage{Type: MsgPlayerRespawn, Data: map[string]interface{}{
+			"char_id": r.session.charID, "name": r.session.charName,
+			"x": r.x, "y": r.y,
+			"hp": r.session.hp, "max_hp": r.session.maxHP,
+			"mp": r.session.mp, "max_mp": r.session.maxMP,
+		}})
+		log.Printf("玩家 %s 在篝火处复活 (%.0f, %.0f)", r.session.charName, r.x, r.y)
 	}
 }
 
@@ -358,11 +381,7 @@ func (s *DemoServer) arenaTick() {
 	aiTicker := time.NewTicker(time.Second / NPCAITickHz)
 	defer aiTicker.Stop()
 
-	// 篝火复活定时器：每60秒复活篝火附近的死亡玩家
-	campfireTicker := time.NewTicker(CampfireRespawnHz * time.Second)
-	defer campfireTicker.Stop()
-
-	// 篝火倒计时广播：每秒推送剩余秒数
+	// 篝火倒计时（每秒 -1，到 0 时触发复活并重置）
 	campfireCountdownTicker := time.NewTicker(time.Second)
 	defer campfireCountdownTicker.Stop()
 	campfireCountdown := CampfireRespawnHz // 初始倒计时
@@ -378,13 +397,11 @@ func (s *DemoServer) arenaTick() {
 			s.npcAITick()
 		case <-ticker.C:
 			s.doStateSync()
-		case <-campfireTicker.C:
-			campfireCountdown = CampfireRespawnHz
-			s.campfireRespawnTick()
 		case <-campfireCountdownTicker.C:
 			campfireCountdown--
-			if campfireCountdown < 0 {
-				campfireCountdown = 0
+			if campfireCountdown <= 0 {
+				campfireCountdown = CampfireRespawnHz
+				s.campfireRespawnTick()
 			}
 			s.arena.BroadcastAll(ServerMessage{Type: MsgCampfireTick, Data: map[string]interface{}{
 				"countdown": campfireCountdown,

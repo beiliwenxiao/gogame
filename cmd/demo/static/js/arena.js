@@ -328,6 +328,12 @@ class ArenaRenderer {
         }
     }
 
+    onCampfireTick(data) {
+        if (this.engineReady && this.arenaScene) {
+            this.arenaScene.onCampfireTick(data);
+        }
+    }
+
     // ===== HUD 更新（复用原有 DOM） =====
 
     updateHUD(self) {

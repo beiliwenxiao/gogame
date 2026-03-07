@@ -703,6 +703,9 @@ export class ArenaScene extends BaseGameScene {
             : this.remotePlayers.get(data.char_id);
         if (entity) {
             entity.dead = true;
+            // 同时设置 isDead/isDying 阻止 CombatSystem 的单机复活逻辑
+            entity.isDead = true;
+            entity.isDying = true;
             const stats = entity.getComponent('stats');
             if (stats) stats.hp = 0;
             // 死亡时精灵半透明
@@ -793,6 +796,8 @@ export class ArenaScene extends BaseGameScene {
             : this.remotePlayers.get(data.char_id);
         if (entity) {
             entity.dead = false;
+            entity.isDead = false;
+            entity.isDying = false;
             const transform = entity.getComponent('transform');
             if (transform) {
                 transform.position.x = data.x;
@@ -849,10 +854,14 @@ export class ArenaScene extends BaseGameScene {
                     if (p.dead !== undefined) {
                         if (p.dead && !this.playerEntity.dead) {
                             this.playerEntity.dead = true;
+                            this.playerEntity.isDead = true;
+                            this.playerEntity.isDying = true;
                             const sprite = this.playerEntity.getComponent('sprite');
                             if (sprite) { sprite.alpha = 0.3; sprite.isWalking = false; }
                         } else if (!p.dead && this.playerEntity.dead) {
                             this.playerEntity.dead = false;
+                            this.playerEntity.isDead = false;
+                            this.playerEntity.isDying = false;
                             const sprite = this.playerEntity.getComponent('sprite');
                             if (sprite) sprite.alpha = 1.0;
                         }
@@ -866,7 +875,11 @@ export class ArenaScene extends BaseGameScene {
             if (entity) {
                 if (p.x !== undefined) entity.targetX = p.x;
                 if (p.y !== undefined) entity.targetY = p.y;
-                if (p.dead !== undefined) entity.dead = p.dead;
+                if (p.dead !== undefined) {
+                    entity.dead = p.dead;
+                    entity.isDead = p.dead;
+                    entity.isDying = p.dead;
+                }
                 const sprite = entity.getComponent('sprite');
                 if (sprite) {
                     if (p.direction) sprite.direction = this._netToDir[p.direction] || p.direction;
