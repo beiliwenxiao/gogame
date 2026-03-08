@@ -7,6 +7,7 @@ import { BaseGameScene } from '../../prologue/scenes/BaseGameScene.js';
 import { EntityFactory } from '../../ecs/EntityFactory.js';
 import { NameComponent } from '../../ecs/components/NameComponent.js';
 import { calcDamage, applyCrit, SKILL_PHASE, TARGET_MODE_FROM_STRING } from '../../ecs/ComponentTypes.js';
+import { NetworkCombatSystem } from '../../systems/NetworkCombatSystem.js';
 
 export class ArenaScene extends BaseGameScene {
     constructor() {
@@ -74,6 +75,9 @@ export class ArenaScene extends BaseGameScene {
 
         // 右键移动目标指示器 [{x, y, life, maxLife}]
         this.moveTargetIndicators = [];
+
+        // 联网战斗系统
+        this.networkCombat = new NetworkCombatSystem(this);
     }
 
     /**
@@ -410,6 +414,9 @@ export class ArenaScene extends BaseGameScene {
             return m.life > 0;
         });
         
+        // 空格键触发普攻（委托 NetworkCombatSystem）
+        this.networkCombat.handleSpaceAttack();
+
         // 更新火堆动画
         this.updateCampfireAnimation(deltaTime);
         
@@ -503,193 +510,23 @@ export class ArenaScene extends BaseGameScene {
         return (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry) <= 1;
     }
 
+    /**
+     * 自动选中最近的可攻击敌人（NPC 或远程玩家）
+     */
+    _autoSelectNearestEnemy() {
+        this.networkCombat.autoSelectNearestEnemy();
+    }
+
+
     attackTarget() {
-        if (!this.selectedTarget || !this.ws) return;
-        // 灵魂状态不能攻击
-        if (this.playerEntity && this.playerEntity.dead) return;
-        
-        // 检查是否是 NPC 目标（负数 ID）
-        const isNPC = this.selectedTarget < 0;
-        const entity = isNPC
-            ? this.npcEntities.get(this.selectedTarget)
-            : this.remotePlayers.get(this.selectedTarget);
-        if (!entity || entity.dead) return;
-        
-        // 安全区检查：安全区内禁止攻击
-        if (this.playerEntity) {
-            const selfT = this.playerEntity.getComponent('transform');
-            if (selfT && this.isInSafeZone(selfT.position.x, selfT.position.y)) {
-                if (this.floatingTextManager) {
-                    this.floatingTextManager.addText(
-                        selfT.position.x, selfT.position.y - 20,
-                        '安全区内禁止攻击', '#ffaa00'
-                    );
-                }
-                return;
-            }
-        }
-        
-        // 前端范围预判
-        if (this.playerEntity) {
-            const selfTransform = this.playerEntity.getComponent('transform');
-            const targetTransform = entity.getComponent('transform');
-            const combat = this.playerEntity.getComponent('combat');
-            if (selfTransform && targetTransform && combat) {
-                // 使用武器攻击范围
-                const equipment = this.playerEntity.getComponent('equipment');
-                let maxRange = 60;
-                if (equipment) {
-                    const weapon = equipment.getEquipped('mainhand');
-                    if (weapon && weapon.attackRange) {
-                        maxRange = weapon.attackRange;
-                    } else {
-                        const charClass = this.playerEntity.class || 'warrior';
-                        maxRange = charClass === 'archer' ? 200 : 60;
-                    }
-                } else {
-                    const charClass = this.playerEntity.class || 'warrior';
-                    maxRange = charClass === 'archer' ? 200 : 60;
-                }
-                
-                if (!combat.isInSkillRange(
-                    selfTransform.position,
-                    targetTransform.position,
-                    { range: maxRange, area_type: 'single' }
-                )) {
-                    if (this.floatingTextManager) {
-                        this.floatingTextManager.addText(
-                            selfTransform.position.x,
-                            selfTransform.position.y - 20,
-                            '超出攻击范围',
-                            '#ff6600'
-                        );
-                    }
-                    return;
-                }
-            }
-        }
-        
-        const msgType = isNPC ? 'attack_npc' : 'attack';
-        this.ws.send(msgType, { target_id: this.selectedTarget });
+        this.networkCombat.attackTarget();
     }
 
     /**
-     * 释放技能
-     */
-    /**
-     * 释放技能 - 对齐后端 handleCastSkill 的逻辑
-     * 前端预判：范围检查、MP检查、冷却检查
-     * 服务端权威：伤害计算、目标选择、状态变更
+     * 释放技能（委托 NetworkCombatSystem）
      */
     castSkill(skillId) {
-        if (!this.ws || !this.playerEntity) return;
-        // 灵魂状态不能施法
-        if (this.playerEntity.dead) return;
-        
-        const now = Date.now();
-        const cd = this.skillCooldowns[skillId];
-        if (cd && now < cd) return;
-        
-        const transform = this.playerEntity.getComponent('transform');
-        if (!transform) return;
-        
-        // 安全区内禁止使用技能
-        if (this.isInSafeZone(transform.position.x, transform.position.y)) {
-            if (this.floatingTextManager) {
-                this.floatingTextManager.addText(
-                    transform.position.x, transform.position.y - 20,
-                    '安全区内禁止使用技能', '#ffaa00'
-                );
-            }
-            return;
-        }
-        
-        // 前端 MP 预判（对齐后端 handleCastSkill 的 MP 检查）
-        const skill = this.skills.find(s => s.id === skillId);
-        if (skill) {
-            const stats = this.playerEntity.getComponent('stats');
-            if (stats && skill.mp_cost > 0 && stats.mp < skill.mp_cost) {
-                if (this.floatingTextManager) {
-                    this.floatingTextManager.addText(
-                        transform.position.x,
-                        transform.position.y - 20,
-                        'MP不足',
-                        '#6699ff'
-                    );
-                }
-                return;
-            }
-        }
-        
-        let targetX = transform.position.x;
-        let targetY = transform.position.y;
-        let targetId = 0;
-        
-        // 查找目标：支持远程玩家和 NPC（负数 ID）
-        const isNPC = this.selectedTarget && this.selectedTarget < 0;
-        if (this.selectedTarget) {
-            const target = isNPC
-                ? this.npcEntities.get(this.selectedTarget)
-                : this.remotePlayers.get(this.selectedTarget);
-            if (target) {
-                const tTransform = target.getComponent('transform');
-                if (tTransform) {
-                    targetX = tTransform.position.x;
-                    targetY = tTransform.position.y;
-                }
-                targetId = this.selectedTarget;
-                
-                // 前端范围预判（对齐后端距离检查）
-                if (skill) {
-                    const combat = this.playerEntity.getComponent('combat');
-                    if (combat && !combat.isInSkillRange(
-                        transform.position,
-                        { x: targetX, y: targetY },
-                        skill
-                    )) {
-                        if (this.floatingTextManager) {
-                            this.floatingTextManager.addText(
-                                transform.position.x,
-                                transform.position.y - 20,
-                                '超出技能范围',
-                                '#ff6600'
-                            );
-                        }
-                        return;
-                    }
-                }
-            }
-        }
-        
-        const msgType = isNPC ? 'cast_skill_npc' : 'cast_skill';
-        this.ws.send(msgType, {
-            skill_id: skillId,
-            target_id: targetId,
-            target_x: targetX,
-            target_y: targetY
-        });
-        
-        if (skill) {
-            this.skillCooldowns[skillId] = now + skill.cooldown * 1000;
-            
-            // 同步冷却到 combat 组件，让 BottomControlBar 显示冷却遮罩
-            const combat = this.playerEntity.getComponent('combat');
-            if (combat) {
-                const combatSkillId = `backend_${skillId}`;
-                combat.skillCooldowns.set(combatSkillId, now);
-                
-                // 启动技能阶段流水线（前端视觉反馈）
-                combat.startSkillPipeline({
-                    ...skill,
-                    phaseDurations: {
-                        windup: 100,
-                        hit: 50,
-                        settle: 50,
-                        recovery: 200
-                    }
-                });
-            }
-        }
+        this.networkCombat.castSkill(skillId);
     }
 
     // ===== 网络事件处理 =====
@@ -723,61 +560,10 @@ export class ArenaScene extends BaseGameScene {
 
 
     /**
-     * 处理伤害事件 - 服务端权威伤害结果
-     * 后端伤害公式：base = attack - defense*0.5, variance 0.85~1.15
-     * 暴击：普攻10%/技能15%, 倍率1.5x
+     * 处理伤害事件（委托 NetworkCombatSystem）
      */
     onDamage(data) {
-        // 更新目标 HP（服务端权威值）
-        let targetEntity;
-        if (data.target_is_npc) {
-            targetEntity = this.npcEntities.get(data.target_id);
-        } else {
-            targetEntity = data.target_id === this.selfId
-                ? this.playerEntity
-                : this.remotePlayers.get(data.target_id);
-        }
-        
-        if (targetEntity) {
-            const stats = targetEntity.getComponent('stats');
-            if (stats) {
-                stats.hp = data.target_hp;
-                stats.maxHp = data.target_max_hp;
-                // NPC 血量归零时提前设置双标志，防止 CombatSystem 介入
-                if (data.target_is_npc && stats.hp <= 0) {
-                    targetEntity.dead = true;
-                    targetEntity.isDead = true;
-                    targetEntity.isDying = true;
-                }
-            }
-            
-            // 浮动伤害文字（区分普攻/技能/暴击）
-            const transform = targetEntity.getComponent('transform');
-            if (transform && this.floatingTextManager) {
-                let color = '#ff0000';
-                let text = `${Math.round(data.damage)}`;
-                
-                if (data.is_crit) {
-                    color = '#ffd700';
-                    text = `暴击! ${Math.round(data.damage)}`;
-                }
-                
-                // 技能伤害用不同颜色
-                if (data.skill_name) {
-                    color = data.is_crit ? '#ff8c00' : '#ff4500';
-                    text = data.is_crit
-                        ? `${data.skill_name} 暴击! ${Math.round(data.damage)}`
-                        : `${data.skill_name} ${Math.round(data.damage)}`;
-                }
-                
-                this.floatingTextManager.addText(
-                    transform.position.x,
-                    transform.position.y - 20,
-                    text,
-                    color
-                );
-            }
-        }
+        this.networkCombat.onDamage(data);
     }
 
     onPlayerDied(data) {
@@ -1024,39 +810,7 @@ export class ArenaScene extends BaseGameScene {
     }
 
     onSkillCasted(data) {
-        if (data.caster_id === this.selfId && this.playerEntity) {
-            const stats = this.playerEntity.getComponent('stats');
-            if (stats) {
-                stats.mp = data.caster_mp;
-                stats.maxMp = data.caster_max_mp;
-            }
-        }
-        
-        const caster = data.caster_id === this.selfId
-            ? this.playerEntity
-            : this.remotePlayers.get(data.caster_id);
-        if (caster) {
-            const transform = caster.getComponent('transform');
-            if (transform && this.floatingTextManager) {
-                this.floatingTextManager.addText(
-                    transform.position.x,
-                    transform.position.y - 10,
-                    data.skill_name,
-                    '#ffab40'
-                );
-            }
-            
-            // 技能粒子效果
-            if (this.particleSystem && transform) {
-                this.createSkillParticles(data.skill_name, {
-                    casterX: transform.position.x,
-                    casterY: transform.position.y,
-                    targetX: data.target_x,
-                    targetY: data.target_y,
-                    areaSize: data.area_size || 0
-                });
-            }
-        }
+        this.networkCombat.onSkillCasted(data);
     }
 
     // ===== NPC 系统 =====
@@ -1196,59 +950,7 @@ export class ArenaScene extends BaseGameScene {
      * 竞技场需要点击选中目标
      */
     handleEnemySelection() {
-        if (!this.inputManager || !this.playerEntity) return;
-        
-        // 灵魂状态不允许选中目标（不显示攻击范围）
-        if (this.playerEntity.dead) return;
-        
-        // 只在鼠标左键点击且未被 UI 处理时选中（右键是移动）
-        if (!this.inputManager.isMouseClicked() || this.inputManager.getMouseButton() !== 0 || this.inputManager.isMouseClickHandled()) return;
-        
-        const mouseWorldPos = this.inputManager.getMouseWorldPosition(this.camera);
-        if (!mouseWorldPos) return;
-        
-        const clickRange = 40; // 点击判定范围
-        let closestEntity = null;
-        let closestDist = clickRange;
-        
-        // 检查所有 NPC 和远程玩家
-        const candidates = [
-            ...Array.from(this.npcEntities.values()).map(e => ({ entity: e, id: e.npcId })),
-            ...Array.from(this.remotePlayers.entries()).map(([id, e]) => ({ entity: e, id }))
-        ];
-        
-        for (const { entity, id } of candidates) {
-            if (entity.dead) continue;
-            const transform = entity.getComponent('transform');
-            if (!transform) continue;
-            
-            const dx = mouseWorldPos.x - transform.position.x;
-            const dy = mouseWorldPos.y - transform.position.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            
-            if (dist < closestDist) {
-                closestDist = dist;
-                closestEntity = { entity, id };
-            }
-        }
-        
-        if (closestEntity) {
-            // 安全区内禁止选中任何目标
-            const selfT = this.playerEntity.getComponent('transform');
-            if (selfT && this.isInSafeZone(selfT.position.x, selfT.position.y)) {
-                if (this.floatingTextManager) {
-                    this.floatingTextManager.addText(
-                        selfT.position.x, selfT.position.y - 20,
-                        '安全区内禁止战斗', '#ffaa00'
-                    );
-                }
-                this.inputManager.markMouseClickHandled();
-                return;
-            }
-            this.selectedTarget = closestEntity.id;
-            // 标记点击已处理，防止移动系统响应
-            this.inputManager.markMouseClickHandled();
-        }
+        this.networkCombat.handleEnemySelection();
     }
 
     /**

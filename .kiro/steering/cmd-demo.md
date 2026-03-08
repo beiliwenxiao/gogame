@@ -1,3 +1,8 @@
+---
+inclusion: fileMatch
+fileMatchPattern: "cmd/demo/**"
+---
+
 # cmd/demo — 修罗斗场 Demo
 
 ## 概述
@@ -338,3 +343,100 @@ NPC AI 3 个位置（arena.go npcAITick）：
 - `handleMouseDown` 记录 `event.button`（0=左, 2=右）到 `this.mouse.button`
 - `isMouseClicked()` 不区分按键，需配合 `getMouseButton()` 过滤
 - Canvas 已有 `contextmenu` 的 `preventDefault()`，右键菜单不会弹出
+
+
+## 攻击触发链路与快捷键机制
+
+### 攻击两步分离模式
+- ArenaScene 的攻击流程是"选中目标 → 触发攻击"两步分离
+- `handleEnemySelection()`（左键点击选中）由父类 `BaseGameScene.update` 调用
+- `attackTarget()` 需要额外触发入口（快捷键、UI 按钮等），不会自动执行
+- `attackTarget()` 内置完整防护链（无目标 → 灵魂状态 → 目标死亡 → 安全区 → 距离预判），新增触发入口只需调用它，不需要重复检查
+
+### arena.js 的废弃状态
+- `ArenaRenderer.renderSkillBar()` 中有旧的键盘监听器（空格键攻击、数字键技能）
+- 但 `start()` 已注释掉 `renderSkillBar()` 调用，改用引擎 `BottomControlBar`，旧监听器不会注册
+- 新的键盘快捷键功能必须在 `ArenaScene` 中实现，不能依赖 `arena.js`
+
+### InputManager 键盘按键机制
+- `isKeyPressed(key)` 是单帧触发（`keysPressed` map 在 `update` 末尾清空），适合"按一次打一次"的操作
+- 空格键 `' '` 已在 `handleKeyDown` 的 `preventDefault` 列表中，不会触发页面滚动
+- 快捷键检测应放在 `ArenaScene.update()` 中 `super.update()` 之前的自定义逻辑区域
+
+
+## InputManager keyMap 映射陷阱
+
+### 核心规则
+`InputManager.handleKeyDown` 用 `const mappedKey = this.keyMap[key] || key` 将原始键名转换后存入 `keysPressed`/`keys`。调用 `isKeyPressed()` / `isKeyDown()` 时**必须使用映射后的名称**，不能用原始键名。
+
+### 完整映射表
+- 移动：`WASD` / 方向键 → `up` / `down` / `left` / `right`
+- 数字：`1-7` → `skill1-skill7`
+- 功能：`' '` → `space`、`Escape` → `escape`、`Enter` → `enter`、`Shift` → `shift`、`Control` → `ctrl`、`Tab` → `tab`
+- 未映射的字母键（`m`、`h`、`r` 等）保持原始键名
+
+### 两套键盘监听机制
+- `arena.js`（旧）：`window.addEventListener('keydown')` 直接监听 `event.key`，键名是原始的（如 `' '`）
+- `ArenaScene`（新）：通过 `InputManager.isKeyPressed/isKeyDown` 查询，键名是映射后的（如 `'space'`）
+- 两套机制的键名**不能混用**
+
+
+## 键盘攻击与自动选中模式
+
+### attackTarget 的前置条件
+- `attackTarget()` 第一行 `if (!this.selectedTarget) return`，只负责"对已选中目标发送攻击消息"
+- 鼠标攻击通过 `handleEnemySelection` 左键点击预先选中目标，键盘快捷键没有这个前置步骤
+
+### 键盘攻击必须配合 autoSelect
+- 键盘触发攻击（如空格键）时，如果 `selectedTarget` 为空，需要先调用 `_autoSelectNearestEnemy()` 自动选中攻击范围内最近的敌人
+- `_autoSelectNearestEnemy()` 遍历 `npcEntities` + `remotePlayers`，在武器攻击范围内找最近存活目标，遵守安全区限制
+- 标准调用模式：`if (!this.selectedTarget) this._autoSelectNearestEnemy(); this.attackTarget();`
+
+### 鼠标 vs 键盘攻击流程
+- 鼠标：`handleEnemySelection`（左键选中）→ 空格/其他方式 → `attackTarget`
+- 键盘：按键检测 → `_autoSelectNearestEnemy`（无目标时）→ `attackTarget`
+- 两条路径最终汇入 `attackTarget`，共享同一套防护检查链（灵魂状态、安全区、距离预判）
+
+
+## EquipmentComponent API 速查
+
+### 正确方法名
+- `getEquipment(slotType)` — 获取指定槽位装备（**不是** `getEquipped`）
+- `getAllEquipment()` — 获取所有装备
+- `equip(slotType, equipment)` — 装备物品，返回被替换的旧装备
+- `unequip(slotType)` — 卸下装备
+- `getBonusStats()` — 获取装备属性加成总和
+- `getBonusStat(statType)` — 获取单项属性加成
+
+### 槽位名
+`mainhand`、`offhand`、`helmet`、`armor`、`boots`、`ring1`、`ring2`、`necklace`、`belt`、`accessory`、`instrument`、`mount`
+
+### 踩坑：复制代码前先验证 API
+`attackTarget` 中原本就写错了 `getEquipped`，因为之前没有键盘攻击入口，错误分支未被执行。新增功能入口会暴露已有代码中的潜伏 bug，复制代码时要先确认原代码的 API 调用是否正确。
+
+
+## NetworkCombatSystem — 联网战斗系统
+
+### 职责
+`src/systems/NetworkCombatSystem.js` 封装了所有联网战斗逻辑，ArenaScene 中的战斗方法全部委托给它：
+- `attackTarget()` — 联网普攻（含弯刀动画触发）
+- `castSkill(skillId)` — 联网技能施放
+- `autoSelectNearestEnemy()` — 自动选中最近敌人
+- `handleEnemySelection()` — 鼠标左键点击选敌
+- `onDamage(data)` — 处理 `damage_dealt` 消息（HP 更新 + 浮动文字 + NPC 双标志）
+- `onSkillCasted(data)` — 处理 `skill_casted` 消息（MP 同步 + 粒子效果）
+- `handleSpaceAttack()` — 空格键攻击组合入口（检测按键 + 自动选敌 + 攻击）
+
+### 使用方式
+- ArenaScene constructor 中 `this.networkCombat = new NetworkCombatSystem(this)`
+- 场景方法改为一行委托：`attackTarget() { this.networkCombat.attackTarget(); }`
+- `app.js` 的消息注册链路不变（`arena.onDamage(data)` → ArenaScene → NetworkCombatSystem）
+
+### 联网攻击的弯刀动画
+- 单机模式由 `CombatSystem` 内部调用 `weaponRenderer.startAttack()`
+- 联网模式 `attackTarget()` 只发 WebSocket 消息，不经过 CombatSystem，必须在发送后手动调用 `weaponRenderer.startAttack('thrust')`
+- 攻击方向通过 `Math.atan2(dy, dx)` 计算并设置 `weaponRenderer.currentMouseAngle`
+
+### `entity.dead` 为 undefined 的特性
+- 未死亡的实体 `dead` 属性为 `undefined`（非 `false`），依赖 JS falsy 判定
+- `dead` 是动态挂载属性，不在组件初始化时设定
