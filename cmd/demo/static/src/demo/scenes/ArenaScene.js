@@ -364,10 +364,17 @@ export class ArenaScene extends BaseGameScene {
                         transform.position.x = entity.targetX;
                         transform.position.y = entity.targetY;
                     } else {
-                        // NPC AI 2Hz，间隔500ms，用更激进的系数确保能在下次更新前追上目标
-                        const lerp = 1 - Math.pow(0.75, deltaTime * 60);
-                        transform.position.x += dx * lerp;
-                        transform.position.y += dy * lerp;
+                        // 匀速插值：按 NPC speed 属性移动，避免"冲-停"跳动感
+                        const stats = entity.getComponent('stats');
+                        const speed = (stats && stats.speed) ? stats.speed : 80;
+                        const maxStep = speed * deltaTime;
+                        if (dist <= maxStep) {
+                            transform.position.x = entity.targetX;
+                            transform.position.y = entity.targetY;
+                        } else {
+                            transform.position.x += (dx / dist) * maxStep;
+                            transform.position.y += (dy / dist) * maxStep;
+                        }
                     }
                     
                     const sprite = entity.getComponent('sprite');
