@@ -869,6 +869,7 @@ func (s *DemoServer) handleAttackNPC(session *PlayerSession, data json.RawMessag
 	dead := npc.HP <= 0
 	if dead {
 		npc.Dead = true
+		delete(s.arena.npcs, req.TargetID)
 	}
 	s.arena.mu.Unlock()
 
@@ -1008,6 +1009,7 @@ func (s *DemoServer) handleCastSkillNPC(session *PlayerSession, data json.RawMes
 		dead := h.npc.HP <= 0
 		if dead {
 			h.npc.Dead = true
+			delete(s.arena.npcs, h.npc.ID)
 		}
 
 		s.arena.mu.Unlock()
@@ -1275,6 +1277,9 @@ func (s *DemoServer) npcAITick() {
 		npc, npcAlive := s.arena.npcs[atk.npcID]
 		stillAlive := npcAlive && !npc.Dead
 		if !stillAlive {
+			if npcAlive && npc.Dead {
+				delete(s.arena.npcs, atk.npcID)
+			}
 			s.arena.mu.Unlock()
 			continue // NPC 已被击杀，丢弃此攻击（不扣 HP）
 		}
