@@ -114,6 +114,10 @@ export class ArenaScene extends BaseGameScene {
                 this.castSkill(skillId);
             };
         }
+        // 联网模式：禁用 MeleeAttackSystem 的单机箭矢消耗
+        if (this.meleeAttackSystem) {
+            this.meleeAttackSystem._arenaMode = true;
+        }
         
         // 用实际 canvas 尺寸覆盖逻辑尺寸，避免双重压缩
         const canvas = document.getElementById(this.canvasId);
@@ -225,6 +229,11 @@ export class ArenaScene extends BaseGameScene {
             // 同步暴击属性（对齐后端 CombatAttributeComponent）
             if (serverData.crit_rate !== undefined) stats.critRate = serverData.crit_rate;
             if (serverData.crit_damage !== undefined) stats.critDamage = serverData.crit_damage;
+        }
+        
+        // 同步职业（后端 class 覆盖 BaseGameScene 硬编码的 'refugee'）
+        if (serverData.class) {
+            this.playerEntity.class = serverData.class;
         }
         
         const nameComp = this.playerEntity.getComponent('name');
@@ -1630,7 +1639,7 @@ export class ArenaScene extends BaseGameScene {
             'archer': { attackSpeed: 3.0, attackRange: 30, attackDistance: 250 }  // attackRange=角度（度数）
         };
         
-        // 先合并弹药数量（多捆合并为一个 offhand 条目）
+        // 先合并弹药数量（多捆合并为一个 offhand 条目，剩余放背包）
         let totalAmmoQuantity = 0;
         let ammoItem = null;
         for (const eq of backendEquips) {
@@ -1642,6 +1651,7 @@ export class ArenaScene extends BaseGameScene {
                         name: eq.def.name,
                         type: 'ammo',
                         subType: 'ammo',
+                        maxStack: 99,
                         rarity: QUALITY_MAP[eq.def.quality] !== undefined ? QUALITY_MAP[eq.def.quality] : 0,
                         level: eq.def.level,
                         stats: { attack: eq.def.attack || 0, defense: 0, maxHp: 0, speed: 0 }
@@ -1650,8 +1660,20 @@ export class ArenaScene extends BaseGameScene {
             }
         }
         if (ammoItem) {
-            ammoItem.quantity = totalAmmoQuantity;
-            equipment.equip('offhand', ammoItem);
+            // 装备1组（最多99支）到副手槽
+            const equipQuantity = Math.min(totalAmmoQuantity, 99);
+            const equippedAmmo = { ...ammoItem, quantity: equipQuantity };
+            equipment.equip('offhand', equippedAmmo);
+            
+            // 剩余放入背包（每组99支）
+            const remaining = totalAmmoQuantity - equipQuantity;
+            if (remaining > 0) {
+                const inventory = this.playerEntity.getComponent('inventory');
+                if (inventory) {
+                    const backpackItem = { ...ammoItem };
+                    inventory.addItem(backpackItem, remaining);
+                }
+            }
         }
 
         for (const eq of backendEquips) {
@@ -2143,6 +2165,9 @@ export class ArenaScene extends BaseGameScene {
         if (this.combatSystem) {
             this.combatSystem._arenaMode = false;
             this.combatSystem.onNetworkSkillCast = null;
+        }
+        if (this.meleeAttackSystem) {
+            this.meleeAttackSystem._arenaMode = false;
         }
         super.exit();
     }

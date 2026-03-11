@@ -240,6 +240,26 @@ export class PlayerInfoPanel extends UIElement {
       { label: '速度', value: stats.speed, color: '#00ff00' }
     ];
 
+    // 弓箭手显示箭矢数量（副手 + 背包总数）
+    if (this.player.class === 'archer') {
+      let arrowCount = 0;
+      if (equipment) {
+        const offhand = equipment.getEquipment('offhand');
+        if (offhand && offhand.subType === 'ammo' && offhand.quantity > 0) {
+          arrowCount += offhand.quantity;
+        }
+      }
+      const inventory = this.player.getComponent('inventory');
+      if (inventory) {
+        for (const { slot } of inventory.getAllItems()) {
+          if (slot.item && (slot.item.subType === 'ammo' || slot.item.type === 'ammo')) {
+            arrowCount += slot.quantity;
+          }
+        }
+      }
+      attributes.push({ label: '箭矢', value: arrowCount, color: '#ffcc44' });
+    }
+
     ctx.font = '13px Arial';
     for (const attr of attributes) {
       // 标签

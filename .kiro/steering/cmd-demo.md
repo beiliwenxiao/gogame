@@ -700,3 +700,65 @@ NPC 死亡后应立即从 `s.arena.npcs` map 中 `delete`，不要只设 `npc.De
 3. `npcAITick` 广播阶段 — 二次检查发现残留死亡 NPC 时兜底删除
 
 前提：掉落（`tryNPCDrop`）和广播（`MsgNPCDied`）在删除前完成，删除后不再需要 NPC 数据。
+
+
+## EquipmentComponent subType 白名单校验
+
+### 机制
+`EquipmentComponent.isValidEquipmentForSlot` 用 `validTypes` 白名单校验 `equipment.subType` 是否匹配目标槽位。校验失败时 `equip()` 直接 return null，装备装不上，且只有 `console.warn` 提示，无明显 UI 反馈。
+
+### 当前 mainhand 白名单
+`mainhand: ['mainhand', 'weapon', 'bow']`
+
+### 踩坑：两个系统对 subType 的不同期望
+- `loadBackendEquipments` 把弓箭手武器 `subType` 设为 `'bow'`（让 `checkIsRangedWeapon` 识别远程武器）
+- `EquipmentComponent` 需要 `subType` 在白名单内才允许装备
+- 修改白名单比改 subType 更安全，因为 subType 还被 `checkIsRangedWeapon`、箭矢消耗、箭光特效等系统依赖
+
+### 通用规律
+新增 `subType` 值时，必须同时检查 `EquipmentComponent.isValidEquipmentForSlot` 的白名单是否包含该值。
+
+
+## 弓箭手箭矢系统
+
+### 联网模式双消耗陷阱
+
+`super.update()` 触发 `MeleeAttackSystem.performSectorAttack`（单机箭矢消耗），同时 `NetworkCombatSystem.attackAllInRange` 也消耗箭矢，导致一次攻击扣两支。解决：`MeleeAttackSystem._arenaMode = true` 跳过单机消耗，联网模式由 `NetworkCombatSystem` 统一管理。
+
+### InventoryComponent.addItem 的 maxStack 依赖
+
+`InventoryComponent` 堆叠逻辑完全依赖 `item.maxStack`，默认值为 1（每个物品独占一个槽位）。`loadBackendEquipments` 构造 ammoItem 时必须显式设置 `maxStack: 99`，否则 `inventory.addItem(item, 198)` 会占 198 个格子而非 2 个。
+
+### 联网箭矢消耗 + 自动补充流程
+
+`NetworkCombatSystem.attackAllInRange` 中：
+1. 攻击前检查 offhand 是否有 `subType === 'ammo'` 且 `quantity > 0`
+2. 耗尽时遍历 `inventory.getAllItems()` 找 ammo 槽位
+3. `inventory.removeFromSlot(index, quantity)` 取出 → `equipComp.equip('offhand', newAmmo)` 装备
+4. 全部耗尽显示浮动文字"没有箭矢！"并中断攻击
+
+### 后端 seed 与前端分配的职责分离
+
+- 后端 `seed.go`：数据库层面初始数据（3 捆 99 支铁箭存入 `char_equipments`）
+- 前端 `loadBackendEquipments`：将后端数据映射到 ECS 组件（合并弹药总量 → 副手 99 + 背包剩余）
+- 修改初始数量改后端 seed，修改分配策略改前端 loadBackendEquipments
+- 修改 seed 后需删除 `demo.db` 触发数据库重建
+
+
+## PlayerInfoPanel 属性栏扩展
+
+### 属性列表的数据驱动模式
+`PlayerInfoPanel.render` 中属性列表是 `attributes` 数组，每项 `{label, value, color}`，循环渲染。新增属性只需 push 到数组，不需要改渲染逻辑。条件性属性（如弓箭手箭矢）用 `if (this.player.class === 'archer')` 守卫后 push。
+
+### 箭矢总数的跨组件统计
+箭矢分布在两个组件中，统计总数需同时遍历：
+- 副手：`equipment.getEquipment('offhand')` → `offhand.quantity`
+- 背包：`inventory.getAllItems()` 遍历 `slot.item.subType === 'ammo'` 累加 `slot.quantity`
+
+此统计逻辑在 `PlayerInfoPanel`（显示）和 `NetworkCombatSystem`（自动补充）中各有一份，箭矢来源变化时需同步修改。
+
+### 装备槽已有数量显示
+`renderEquipmentSlots` 中已有 `equippedItem.quantity` 的右下角小数字显示，但只显示当前装备槽数量，不含背包储备。
+
+### 后端 seed 数量与前端分配的配合
+前端 `loadBackendEquipments` 分配逻辑：副手取 `min(total, 99)`，剩余全部进背包（按 `maxStack: 99` 自动分组）。要实现"副手 1 捆 + 背包 N 捆"，后端 seed 需给 N+1 捆，前端分配逻辑不用动。

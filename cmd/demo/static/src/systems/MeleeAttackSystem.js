@@ -184,8 +184,8 @@ export class MeleeAttackSystem {
       return;
     }
     
-    // 远程攻击需要消耗箭矢
-    if (this.sectorIsRanged) {
+    // 远程攻击需要消耗箭矢（联网模式下跳过，由 NetworkCombatSystem 管理）
+    if (this.sectorIsRanged && !this._arenaMode) {
       const equipComp2 = this.playerEntity.getComponent('equipment');
       if (equipComp2) {
         const offhand = equipComp2.getEquipment('offhand');
@@ -566,34 +566,40 @@ export class MeleeAttackSystem {
     const flashAlpha = Math.max(0, this.sectorAttackFlash / 0.2);
     
     if (this.sectorIsRanged) {
-      // 远程：鼠标周围绿色小虚线圆圈
-      const mouseWorldPos = this.inputManager.getMouseWorldPosition(camera);
-      if (mouseWorldPos) {
-        const dx = mouseWorldPos.x - cx;
-        const dy = mouseWorldPos.y - cy;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const inRange = dist <= r;
-        
-        const ovalRx = 20;
-        const ovalRy = 12;
-        ctx.beginPath();
-        ctx.ellipse(mouseWorldPos.x, mouseWorldPos.y, ovalRx, ovalRy, 0, 0, Math.PI * 2);
-        ctx.closePath();
-        
-        if (inRange) {
-          ctx.strokeStyle = flashAlpha > 0 ? `rgba(0, 255, 0, ${0.8 + flashAlpha * 0.2})` : 'rgba(0, 255, 0, 0.7)';
-          ctx.fillStyle = `rgba(0, 255, 0, ${0.05 + flashAlpha * 0.1})`;
-        } else {
-          ctx.strokeStyle = 'rgba(160, 160, 160, 0.6)';
-          ctx.fillStyle = 'rgba(160, 160, 160, 0.04)';
-        }
-        ctx.lineWidth = 1.5;
-        ctx.setLineDash([4, 3]);
-        ctx.lineDashOffset = -dashOffset;
-        ctx.fill();
-        ctx.stroke();
-        ctx.setLineDash([]);
+      // 远程：扇形范围指示器（和近战一样的扇形，颜色区分）
+      const rx = r;
+      const ry = r / 2;
+      const steps = 32;
+
+      // 填充
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      for (let i = 0; i <= steps; i++) {
+        const a = (dir - halfAngle) + (i / steps) * halfAngle * 2;
+        ctx.lineTo(cx + Math.cos(a) * rx, cy + Math.sin(a) * ry);
       }
+      ctx.closePath();
+      if (flashAlpha > 0) {
+        ctx.fillStyle = `rgba(100, 200, 100, ${0.12 + flashAlpha * 0.4})`;
+      } else {
+        ctx.fillStyle = 'rgba(100, 200, 100, 0.12)';
+      }
+      ctx.fill();
+
+      // 描边
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      for (let i = 0; i <= steps; i++) {
+        const a = (dir - halfAngle) + (i / steps) * halfAngle * 2;
+        ctx.lineTo(cx + Math.cos(a) * rx, cy + Math.sin(a) * ry);
+      }
+      ctx.closePath();
+      ctx.strokeStyle = flashAlpha > 0 ? `rgba(150, 255, 150, ${0.6 + flashAlpha * 0.4})` : 'rgba(100, 200, 100, 0.6)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([8, 5]);
+      ctx.lineDashOffset = -dashOffset;
+      ctx.stroke();
+      ctx.setLineDash([]);
     } else {
       // 近战椭圆扇形（2.5D 等距视角：ry = r/2）
       const rx = r;

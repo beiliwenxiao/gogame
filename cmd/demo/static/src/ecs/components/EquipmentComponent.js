@@ -133,7 +133,7 @@ export class EquipmentComponent extends Component {
       accessory: ['accessory'],
       helmet: ['helmet'],
       necklace: ['necklace'],
-      mainhand: ['mainhand', 'weapon'],  // 兼容旧的 weapon 类型
+      mainhand: ['mainhand', 'weapon', 'bow'],  // 兼容旧的 weapon 类型和弓类武器
       armor: ['armor'],
       offhand: ['offhand', 'shield', 'ammo'],
       ring1: ['ring'],

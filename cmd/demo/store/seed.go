@@ -147,12 +147,12 @@ func (s *Store) GrantInitialEquipments(charID int64, class string) error {
 		)
 	}
 
-	// 弓箭手额外发放3捆铁箭（每捆99支）
+	// 弓箭手额外发放4捆铁箭（每捆99支）：1捆装备副手 + 3捆放背包
 	if class == "archer" {
 		var ironArrowID int64
 		s.db.QueryRow("SELECT id FROM equipment_defs WHERE name='铁箭' LIMIT 1").Scan(&ironArrowID)
 		if ironArrowID > 0 {
-			for i := 0; i < 3; i++ {
+			for i := 0; i < 4; i++ {
 				s.db.Exec(
 					"INSERT INTO char_equipments (character_id, equip_def_id, slot_type, quantity) VALUES (?,?,'ammo',99)",
 					charID, ironArrowID,

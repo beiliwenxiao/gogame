@@ -460,8 +460,11 @@ export class NetworkCombatSystem {
                             duration: 1.0
                         });
                     } else if (areaType === 'circle') {
-                        // 弓箭手技能：圆形范围（以目标点为中心，2.5D 椭圆渲染）
-                        const radius = data.area_size || 20;
+                        // 弓箭手技能：以鼠标点击位置为中心，武器攻击距离 1/2 为半径的椭圆
+                        const equipment = scene.playerEntity.getComponent('equipment');
+                        const weapon = equipment ? equipment.getEquipment('mainhand') : null;
+                        const weaponDist = weapon ? (weapon.attackDistance || 250) : 250;
+                        const radius = weaponDist / 2;
                         let circleColor, circleFill;
                         if (data.skill_name === '闪电箭') {
                             circleColor = 'rgba(68, 170, 255, 0.85)';
@@ -538,6 +541,50 @@ export class NetworkCombatSystem {
         let sectorHalfAngle = mas ? mas.sectorAngle / 2 : (Math.PI / 6);
         let sectorRadius = maxRange;
         const isRanged = mas ? mas.sectorIsRanged : false;
+
+        // 远程攻击消耗箭矢
+        if (isRanged) {
+            const equipComp = scene.playerEntity.getComponent('equipment');
+            if (equipComp) {
+                const offhand = equipComp.getEquipment('offhand');
+                if (!offhand || offhand.subType !== 'ammo' || !offhand.quantity || offhand.quantity <= 0) {
+                    // 尝试从背包自动补充箭矢
+                    const inventory = scene.playerEntity.getComponent('inventory');
+                    let refilled = false;
+                    if (inventory) {
+                        for (const { slot, index } of inventory.getAllItems()) {
+                            if (slot.item && (slot.item.subType === 'ammo' || slot.item.type === 'ammo')) {
+                                const newAmmo = { ...slot.item, quantity: slot.quantity };
+                                inventory.removeFromSlot(index, slot.quantity);
+                                equipComp.equip('offhand', newAmmo);
+                                refilled = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!refilled) {
+                        if (scene.floatingTextManager) {
+                            scene.floatingTextManager.addText(
+                                selfTransform.position.x,
+                                selfTransform.position.y - 70,
+                                '没有箭矢！',
+                                '#ff6666'
+                            );
+                        }
+                        return;
+                    }
+                }
+                // 消耗1支箭矢
+                const currentOffhand = equipComp.getEquipment('offhand');
+                if (currentOffhand && currentOffhand.quantity > 0) {
+                    currentOffhand.quantity -= 1;
+                    if (currentOffhand.quantity <= 0) {
+                        equipComp.unequip('offhand');
+                    }
+                }
+            }
+        }
+
         if (mas) {
             const equipComp2 = scene.playerEntity.getComponent('equipment');
             if (equipComp2) {
