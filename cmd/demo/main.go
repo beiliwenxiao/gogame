@@ -173,8 +173,10 @@ type ArenaNPC struct {
 	Name      string  `json:"name"`
 	Template  string  `json:"template"`  // 敌人模板ID（对应前端 EntityFactory）
 	Level     int     `json:"level"`
-	X, Y      float64 `json:"x,y"`
-	HP, MaxHP float64 `json:"hp,max_hp"`
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	HP     float64 `json:"hp"`
+	MaxHP  float64 `json:"max_hp"`
 	Attack    float64 `json:"attack"`
 	Defense   float64 `json:"defense"`
 	Speed     float64 `json:"speed"`

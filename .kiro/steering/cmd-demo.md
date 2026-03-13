@@ -487,6 +487,22 @@ NPC AI 3 个位置（arena.go npcAITick）：
 - `inputManager.markMouseClickHandled()` 必须在 `attackAllInRange()` 之前调用，防止 MovementSystem 同帧响应左键导致角色移动
 - 原有的 `attackTarget()` 仍保留用于单目标攻击场景（如技能指定目标）
 
+### 鼠标左键攻击与空格键攻击的一致性
+
+鼠标左键和空格键攻击现在完全一致，调用链验证结果：
+- `MeleeAttackSystem.update` 中鼠标左键攻击已加 `!this._arenaMode` 守卫，联网模式下不触发单机 `performSectorAttack`
+- `handleUIClick()` 在世界区域点击时不会消费鼠标点击（只有 UI 元素命中或对话框激活才 `markMouseClickHandled`）
+- `CombatSystem.handleTargetSelection` 不调用 `markMouseClickHandled()`，不会阻止 `handleEnemySelection`（且在其之后执行）
+- `handleEnemySelection()` → `attackAllInRange()` 调用链通畅
+
+两者行为完全一致：
+- 单次触发（按一次打一次）：空格键用 `isKeyPressed`，鼠标用 `isMouseClicked`，都是单帧触发
+- 调用 `attackAllInRange()` 群攻范围内所有目标
+- 共享同一套武器冷却（`sliceLastAttackTime`）
+- 触发弯刀动画 + 刀光/箭光特效
+
+**根因记录**：修复前 `MeleeAttackSystem.update` 用 `isMouseDown()`（持续按住）检测鼠标左键并调用 `performSectorAttack`（单机逻辑），消费了武器冷却（`sliceLastAttackTime`），导致同帧后续的 `handleEnemySelection` → `attackAllInRange` 因冷却检查未通过而 return。加 `_arenaMode` 守卫后，单机鼠标攻击在联网模式下被跳过，左键点击正确传递到 `NetworkCombatSystem`。
+
 
 ## 技能 area_type 驱动范围判定
 
