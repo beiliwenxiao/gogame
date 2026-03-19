@@ -132,6 +132,12 @@ type PlayerSession struct {
 	FearDirX  float64 // 恐惧逃跑方向 X
 	FearDirY  float64 // 恐惧逃跑方向 Y
 
+	// 旋风斩持续状态
+	WhirlwindUntil    int64   // 旋风斩结束时间（UnixMilli），0 表示未激活
+	WhirlwindNextTick int64   // 下次造成伤害的时间（UnixMilli）
+	WhirlwindDamage   float64 // 每次伤害量（施法时计算好）
+	WhirlwindAreaSize float64 // 旋风斩范围（施法时计算好）
+
 	// 增量同步：上次发送的快照（每个接收者独立）
 	lastSync map[int64]*playerSnapshot
 }

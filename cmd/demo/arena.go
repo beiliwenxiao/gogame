@@ -345,6 +345,16 @@ func (s *DemoServer) handleCastSkill(session *PlayerSession, data json.RawMessag
 		}
 	}
 	s.arena.mu.RUnlock()
+
+	// 旋风斩：设置持续状态（session 是当前玩家，无需 arena 锁）
+	if skill.Name == "旋风斩" {
+		now := time.Now().UnixMilli()
+		session.WhirlwindUntil = now + 5000
+		session.WhirlwindNextTick = now + 1000
+		session.WhirlwindDamage = session.attack * skill.Damage * 0.5
+		session.WhirlwindAreaSize = skill.AreaSize
+	}
+
 	for _, t := range targets {
 		// 战吼：造成 30% 伤害 + 恐惧逃跑 3 秒
 		if skill.Name == "战吼" {
@@ -514,6 +524,165 @@ func (s *DemoServer) campfireRespawnTick() {
 	}
 }
 
+// whirlwindTick 处理旋风斩持续伤害（每秒触发一次，持续5秒）
+func (s *DemoServer) whirlwindTick() {
+	now := time.Now().UnixMilli()
+
+	// 收集需要处理的玩家和目标
+	type whirlwindHit struct {
+		caster *PlayerSession
+		npc    *ArenaNPC
+		player *PlayerSession
+	}
+	var hits []whirlwindHit
+
+	s.arena.mu.Lock()
+	for _, session := range s.arena.players {
+		if session.dead || session.WhirlwindUntil == 0 {
+			continue
+		}
+		if now > session.WhirlwindUntil {
+			// 持续时间结束，清除状态
+			session.WhirlwindUntil = 0
+			session.WhirlwindNextTick = 0
+			continue
+		}
+		if now < session.WhirlwindNextTick {
+			continue
+		}
+		// 到了下一次 tick 时间
+		session.WhirlwindNextTick = now + 1000
+
+		// 收集范围内 NPC
+		for _, npc := range s.arena.npcs {
+			if npc.Dead {
+				continue
+			}
+			if isInEllipseRange(session.x, session.y, npc.X, npc.Y, session.WhirlwindAreaSize) {
+				hits = append(hits, whirlwindHit{caster: session, npc: npc})
+			}
+		}
+		// 收集范围内玩家（PVP）
+		for id, p := range s.arena.players {
+			if id == session.charID || p.dead {
+				continue
+			}
+			if isInEllipseRange(session.x, session.y, p.x, p.y, session.WhirlwindAreaSize) {
+				hits = append(hits, whirlwindHit{caster: session, player: p})
+			}
+		}
+	}
+
+	// 锁内计算伤害并应用
+	type dmgResult struct {
+		caster    *PlayerSession
+		targetID  int64
+		dmg       float64
+		isCrit    bool
+		targetHP  float64
+		maxHP     float64
+		isNPC     bool
+		npcDead   bool
+		npc       *ArenaNPC
+		player    *PlayerSession
+		playerDead bool
+	}
+	var results []dmgResult
+	for _, h := range hits {
+		caster := h.caster
+		if h.npc != nil {
+			npc := h.npc
+			if npc.Dead {
+				continue
+			}
+			dmg := math.Round(calcDamage(caster.WhirlwindDamage, npc.Defense))
+			if dmg < 1 {
+				dmg = 1
+			}
+			isCrit := rand.Float64() < (caster.critRate + 0.05)
+			if isCrit {
+				dmg = math.Round(dmg * caster.critDmg)
+			}
+			npc.HP -= dmg
+			if npc.HP < 0 {
+				npc.HP = 0
+			}
+			dead := npc.HP <= 0
+			if dead {
+				npc.Dead = true
+				delete(s.arena.npcs, npc.ID)
+			}
+			results = append(results, dmgResult{
+				caster: caster, targetID: npc.ID, dmg: dmg, isCrit: isCrit,
+				targetHP: npc.HP, maxHP: npc.MaxHP, isNPC: true, npcDead: dead, npc: npc,
+			})
+		} else if h.player != nil {
+			t := h.player
+			if t.dead {
+				continue
+			}
+			dmg := math.Round(calcDamage(caster.WhirlwindDamage, t.defense) * 0.5) // PVP 减半
+			if dmg < 1 {
+				dmg = 1
+			}
+			isCrit := rand.Float64() < (caster.critRate + 0.05)
+			if isCrit {
+				dmg = math.Round(dmg * caster.critDmg)
+			}
+			t.hp -= dmg
+			if t.hp < 0 {
+				t.hp = 0
+			}
+			dead := t.hp <= 0
+			if dead {
+				t.dead = true
+			}
+			results = append(results, dmgResult{
+				caster: caster, targetID: t.charID, dmg: dmg, isCrit: isCrit,
+				targetHP: t.hp, maxHP: t.maxHP, isNPC: false, player: t, playerDead: dead,
+			})
+		}
+	}
+	s.arena.mu.Unlock()
+
+	// 锁外广播
+	for _, r := range results {
+		if r.isNPC {
+			s.arena.BroadcastAll(ServerMessage{Type: MsgDamageDealt, Data: map[string]interface{}{
+				"attacker_id":   r.caster.charID,
+				"target_id":     r.targetID,
+				"damage":        r.dmg,
+				"is_crit":       r.isCrit,
+				"target_hp":     r.targetHP,
+				"target_max_hp": r.maxHP,
+				"target_is_npc": true,
+				"skill_name":    "旋风斩",
+			}})
+			if r.npcDead {
+				s.arena.BroadcastAll(ServerMessage{Type: MsgNPCDied, Data: map[string]interface{}{
+					"id":        r.npc.ID,
+					"name":      r.npc.Name,
+					"killer_id": r.caster.charID,
+					"killer":    r.caster.charName,
+				}})
+				s.tryNPCDrop(r.npc, r.caster.charID)
+			}
+		} else {
+			s.arena.BroadcastAll(ServerMessage{Type: MsgDamageDealt, Data: map[string]interface{}{
+				"attacker_id": r.caster.charID, "target_id": r.targetID,
+				"damage": r.dmg, "is_crit": r.isCrit,
+				"target_hp": r.targetHP, "target_max_hp": r.maxHP, "skill_name": "旋风斩",
+			}})
+			if r.playerDead {
+				s.arena.BroadcastAll(ServerMessage{Type: MsgPlayerDied, Data: map[string]interface{}{
+					"char_id": r.targetID, "name": r.player.charName,
+					"killer_id": r.caster.charID, "killer": r.caster.charName,
+				}})
+			}
+		}
+	}
+}
+
 // arenaTick 竞技场状态同步 tick 循环
 func (s *DemoServer) arenaTick() {
 	ticker := time.NewTicker(time.Second / StateSyncHz)
@@ -531,6 +700,10 @@ func (s *DemoServer) arenaTick() {
 	campfireCountdownTicker := time.NewTicker(time.Second)
 	defer campfireCountdownTicker.Stop()
 	campfireCountdown := CampfireRespawnHz // 初始倒计时
+
+	// 旋风斩持续伤害 ticker（每秒检查一次）
+	whirlwindTicker := time.NewTicker(time.Second)
+	defer whirlwindTicker.Stop()
 
 	// 首次立即刷新一波 NPC
 	s.spawnNPCWave()
@@ -552,6 +725,8 @@ func (s *DemoServer) arenaTick() {
 			s.arena.BroadcastAll(ServerMessage{Type: MsgCampfireTick, Data: map[string]interface{}{
 				"countdown": campfireCountdown,
 			}})
+		case <-whirlwindTicker.C:
+			s.whirlwindTick()
 		}
 	}
 }
@@ -1050,6 +1225,15 @@ func (s *DemoServer) handleCastSkillNPC(session *PlayerSession, data json.RawMes
 			h.npc.TargetID = 0
 		}
 		dmgResults = append(dmgResults, npcDmgResult{npc: h.npc, dmg: dmg, isCrit: isCrit, dead: dead})
+	}
+
+	// 旋风斩：锁内设置持续状态
+	if skill.Name == "旋风斩" {
+		now := time.Now().UnixMilli()
+		session.WhirlwindUntil = now + 5000
+		session.WhirlwindNextTick = now + 1000
+		session.WhirlwindDamage = session.attack * skill.Damage * 0.5
+		session.WhirlwindAreaSize = skill.AreaSize
 	}
 
 	// 战吼：收集范围内玩家目标（锁内）

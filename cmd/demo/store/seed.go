@@ -29,7 +29,10 @@ func (s *Store) SeedDefaultEquipment() error {
 		// 检查弓箭手武器攻击角度是否已更新（短弓 attack_range = 30）
 		var bowRange float64
 		s.db.QueryRow("SELECT attack_range FROM equipment_defs WHERE name='短弓' LIMIT 1").Scan(&bowRange)
-		if hasIconID == 0 || skillVersion != "fan" || warcryDmg < 0.29 || archerSkillCount == 0 || leatherDef < 15 || ironArrowCount == 0 || bowRange > 50 {
+		// 检查旋风斩冷却是否已更新为15秒
+		var whirlwindCD float64
+		s.db.QueryRow("SELECT cooldown FROM skill_defs WHERE name='旋风斩' LIMIT 1").Scan(&whirlwindCD)
+		if hasIconID == 0 || skillVersion != "fan" || warcryDmg < 0.29 || archerSkillCount == 0 || leatherDef < 15 || ironArrowCount == 0 || bowRange > 50 || whirlwindCD < 14 {
 			// 旧数据，删除重建
 			log.Println("检测到旧数据，重新初始化...")
 			s.db.Exec("DELETE FROM equipment_defs")
@@ -90,8 +93,8 @@ func (s *Store) SeedDefaultEquipment() error {
 		{Name: "普通攻击", Class: "warrior", Damage: 1.0, MPCost: 0, Cooldown: 0.8, Range: 50, AreaType: "single"},
 		// 猛击：200% 伤害，扇形范围与普攻一致（由后端动态读取武器范围）
 		{Name: "猛击", Class: "warrior", Damage: 2.0, MPCost: 15, Cooldown: 3.0, Range: 0, AreaType: "fan"},
-		// 旋风斩：80% 伤害/秒，以玩家为中心的椭圆范围（武器距离），后端动态设置 AreaSize
-		{Name: "旋风斩", Class: "warrior", Damage: 0.8, MPCost: 25, Cooldown: 5.0, Range: 0, AreaType: "ellipse", AreaSize: 0},
+		// 旋风斩：80% 伤害/秒，持续5秒每秒1次，冷却15秒，以玩家为中心的椭圆范围（武器距离），后端动态设置 AreaSize
+		{Name: "旋风斩", Class: "warrior", Damage: 0.8, MPCost: 25, Cooldown: 15.0, Range: 0, AreaType: "ellipse", AreaSize: 0},
 		// 战吼：30% 伤害 + 恐惧逃跑3秒，椭圆范围 = 武器距离×3，后端动态设置 AreaSize
 		{Name: "战吼", Class: "warrior", Damage: 0.3, MPCost: 20, Cooldown: 10.0, Range: 0, AreaType: "ellipse", AreaSize: 0},
 		// 弓箭手技能

@@ -84,6 +84,11 @@ export class ArenaScene extends BaseGameScene {
 
         // 昏迷/恐惧转圈效果：旋转角度（弧度），每帧递增
         this._stunRotation = 0;
+
+        // 旋风斩持续状态
+        this._whirlwindUntil = 0;       // 持续结束时间（ms）
+        this._whirlwindAreaSize = 0;    // 旋风范围
+        this._whirlwindNextParticle = 0; // 下次触发粒子的时间（ms）
     }
 
     /**
@@ -447,6 +452,20 @@ export class ArenaScene extends BaseGameScene {
 
         // 更新昏迷/恐惧转圈旋转角
         this._stunRotation = (this._stunRotation + deltaTime * Math.PI * 2.5) % (Math.PI * 2);
+
+        // 旋风斩持续粒子（每秒触发一次，与后端伤害 tick 同步）
+        if (this._whirlwindUntil > 0 && this.playerEntity && !this.playerEntity.dead) {
+            const now = Date.now();
+            if (now >= this._whirlwindUntil) {
+                this._whirlwindUntil = 0;
+            } else if (now >= this._whirlwindNextParticle) {
+                this._whirlwindNextParticle = now + 1000;
+                const t = this.playerEntity.getComponent('transform');
+                if (t) {
+                    this._emitWhirlwindParticles(t.position.x, t.position.y, this._whirlwindAreaSize);
+                }
+            }
+        }
 
         // 更新白骨倒计时
         this.boneCorpses = this.boneCorpses.filter(b => {
@@ -1458,6 +1477,59 @@ export class ArenaScene extends BaseGameScene {
     }
 
     /**
+     * 发射旋风斩粒子效果（施法时和每秒 tick 时复用）
+     */
+    _emitWhirlwindParticles(cx, cy, radius) {
+        if (!this.particleSystem) return;
+        // 外圈旋风（快速旋转的风刃粒子）
+        for (let i = 0; i < 30; i++) {
+            const angle = (i / 30) * Math.PI * 2;
+            const r = radius * (0.4 + Math.random() * 0.6);
+            this.particleSystem.emit({
+                position: { x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r * 0.5 },
+                velocity: { x: Math.cos(angle + Math.PI / 2) * 120, y: Math.sin(angle + Math.PI / 2) * 60 },
+                life: 600,
+                size: 3 + Math.random() * 4,
+                color: '#aaddff',
+                alpha: 0.85,
+                gravity: 0,
+                friction: 0.93
+            });
+        }
+        // 内圈旋风（较小、较快）
+        for (let i = 0; i < 16; i++) {
+            const angle = (i / 16) * Math.PI * 2 + Math.random() * 0.3;
+            const r = radius * 0.3;
+            this.particleSystem.emit({
+                position: { x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r * 0.5 },
+                velocity: { x: Math.cos(angle + Math.PI / 2) * 160, y: Math.sin(angle + Math.PI / 2) * 80 },
+                life: 400,
+                size: 2 + Math.random() * 2,
+                color: '#ffffff',
+                alpha: 0.9,
+                gravity: 0,
+                friction: 0.90
+            });
+        }
+        // 地面尘土飞扬
+        this.particleSystem.emitBurst({
+            position: { x: cx, y: cy },
+            velocity: { x: 0, y: 0 },
+            life: 500,
+            size: 4,
+            color: '#998866',
+            alpha: 0.5,
+            gravity: -10,
+            friction: 0.92
+        }, 10, {
+            velocityRange: { min: 30, max: 80 },
+            angleRange: { min: 0, max: Math.PI * 2 },
+            sizeRange: { min: 3, max: 6 },
+            lifeRange: { min: 300, max: 600 }
+        });
+    }
+
+    /**
      * 渲染 NPC 死亡白骨（最后3秒淡出）
      */
     _renderBoneCorpse(ctx, bone) {
@@ -1966,52 +2038,14 @@ export class ArenaScene extends BaseGameScene {
                 case '旋风斩': {
                     // 旋风粒子效果 - 多层旋转风刃
                     const radius = areaSize || 80;
-                    // 外圈旋风（快速旋转的风刃粒子）
-                    for (let i = 0; i < 30; i++) {
-                        const angle = (i / 30) * Math.PI * 2;
-                        const r = radius * (0.4 + Math.random() * 0.6);
-                        this.particleSystem.emit({
-                            position: { x: casterX + Math.cos(angle) * r, y: casterY + Math.sin(angle) * r * 0.5 },
-                            velocity: { x: Math.cos(angle + Math.PI / 2) * 120, y: Math.sin(angle + Math.PI / 2) * 60 },
-                            life: 600,
-                            size: 3 + Math.random() * 4,
-                            color: '#aaddff',
-                            alpha: 0.85,
-                            gravity: 0,
-                            friction: 0.93
-                        });
+                    this._emitWhirlwindParticles(casterX, casterY, radius);
+                    // 如果是自己施法，设置持续5秒旋风状态（每秒触发一次粒子）
+                    if (data.caster_id === this.selfId) {
+                        const now = Date.now();
+                        this._whirlwindUntil = now + 5000;
+                        this._whirlwindAreaSize = radius;
+                        this._whirlwindNextParticle = now + 1000;
                     }
-                    // 内圈旋风（较小、较快）
-                    for (let i = 0; i < 16; i++) {
-                        const angle = (i / 16) * Math.PI * 2 + Math.random() * 0.3;
-                        const r = radius * 0.3;
-                        this.particleSystem.emit({
-                            position: { x: casterX + Math.cos(angle) * r, y: casterY + Math.sin(angle) * r * 0.5 },
-                            velocity: { x: Math.cos(angle + Math.PI / 2) * 160, y: Math.sin(angle + Math.PI / 2) * 80 },
-                            life: 400,
-                            size: 2 + Math.random() * 2,
-                            color: '#ffffff',
-                            alpha: 0.9,
-                            gravity: 0,
-                            friction: 0.90
-                        });
-                    }
-                    // 地面尘土飞扬
-                    this.particleSystem.emitBurst({
-                        position: { x: casterX, y: casterY },
-                        velocity: { x: 0, y: 0 },
-                        life: 500,
-                        size: 4,
-                        color: '#998866',
-                        alpha: 0.5,
-                        gravity: -10,
-                        friction: 0.92
-                    }, 10, {
-                        velocityRange: { min: 30, max: 80 },
-                        angleRange: { min: 0, max: Math.PI * 2 },
-                        sizeRange: { min: 3, max: 6 },
-                        lifeRange: { min: 300, max: 600 }
-                    });
                     break;
                 }
                 case '战吼': {
@@ -2414,6 +2448,8 @@ export class ArenaScene extends BaseGameScene {
         this.boneCorpses = [];
         this.moveTargetIndicators = [];
         this.groundDrops = [];
+        this._whirlwindUntil = 0;
+        this._whirlwindNextParticle = 0;
         this._hideSoulOverlay();
         if (this.combatSystem) {
             this.combatSystem._arenaMode = false;
