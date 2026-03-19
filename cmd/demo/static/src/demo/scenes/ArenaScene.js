@@ -81,6 +81,9 @@ export class ArenaScene extends BaseGameScene {
 
         // 联网战斗系统
         this.networkCombat = new NetworkCombatSystem(this);
+
+        // 昏迷/恐惧转圈效果：旋转角度（弧度），每帧递增
+        this._stunRotation = 0;
     }
 
     /**
@@ -442,6 +445,9 @@ export class ArenaScene extends BaseGameScene {
             return ind.life > 0;
         });
 
+        // 更新昏迷/恐惧转圈旋转角
+        this._stunRotation = (this._stunRotation + deltaTime * Math.PI * 2.5) % (Math.PI * 2);
+
         // 更新白骨倒计时
         this.boneCorpses = this.boneCorpses.filter(b => {
             b.life -= deltaTime;
@@ -660,6 +666,20 @@ export class ArenaScene extends BaseGameScene {
      */
     onDamage(data) {
         this.networkCombat.onDamage(data);
+        // 战吼命中：给目标实体设置转圈效果
+        if (data.skill_name === '战吼') {
+            let targetEntity;
+            if (data.target_is_npc) {
+                targetEntity = this.npcEntities.get(data.target_id);
+            } else {
+                targetEntity = data.target_id === this.selfId
+                    ? this.playerEntity
+                    : this.remotePlayers.get(data.target_id);
+            }
+            if (targetEntity && !targetEntity.dead) {
+                targetEntity.stunEffectUntil = Date.now() + 3000;
+            }
+        }
     }
 
     onPlayerDied(data) {
@@ -908,6 +928,15 @@ export class ArenaScene extends BaseGameScene {
     onSkillCasted(data) {
         console.log('[ArenaScene] onSkillCasted received:', data.skill_name, 'caster=', data.caster_id, 'area_type=', data.area_type);
         this.networkCombat.onSkillCasted(data);
+        // 战吼恐惧：给目标玩家设置转圈效果
+        if (data.skill_name === '战吼_fear') {
+            const targetEntity = data.target_id === this.selfId
+                ? this.playerEntity
+                : this.remotePlayers.get(data.target_id);
+            if (targetEntity && !targetEntity.dead) {
+                targetEntity.stunEffectUntil = Date.now() + 3000;
+            }
+        }
     }
 
     // ===== NPC 系统 =====
@@ -1245,6 +1274,9 @@ export class ArenaScene extends BaseGameScene {
 
         // 技能范围虚线（跟随玩家，始终在最上层）
         this._renderSkillRangeIndicator(ctx);
+
+        // 昏迷/恐惧转圈效果（在所有实体上层绘制）
+        this._renderStunEffects(ctx);
     }
 
     /**
@@ -1356,6 +1388,73 @@ export class ArenaScene extends BaseGameScene {
             x: transform.position.x,
             y: transform.position.y - h / 10
         };
+    }
+
+    /**
+     * 渲染昏迷/恐惧转圈星星效果（头顶绕圈）
+     * 遍历所有实体，检查 stunEffectUntil，有效期内绘制
+     */
+    _renderStunEffects(ctx) {
+        const now = Date.now();
+        const allEntities = [
+            ...(this.playerEntity ? [this.playerEntity] : []),
+            ...Array.from(this.remotePlayers.values()),
+            ...Array.from(this.npcEntities.values())
+        ];
+
+        for (const entity of allEntities) {
+            if (!entity.stunEffectUntil || now >= entity.stunEffectUntil) continue;
+            if (entity.dead) continue;
+
+            const transform = entity.getComponent('transform');
+            if (!transform) continue;
+            const sprite = entity.getComponent('sprite');
+            const h = sprite?.height || 64;
+
+            // 头顶位置（精灵顶部再往上一点）
+            const cx = transform.position.x;
+            const cy = transform.position.y - h - 8;
+
+            // 剩余时间比例，最后0.5秒淡出
+            const remaining = (entity.stunEffectUntil - now) / 1000;
+            const alpha = remaining < 0.5 ? remaining / 0.5 : 1;
+
+            // 3颗星绕圈，间隔120°
+            const orbitRx = 14; // 椭圆水平半径
+            const orbitRy = 7;  // 椭圆垂直半径（2.5D压缩）
+            const starCount = 3;
+
+            ctx.save();
+            ctx.globalAlpha = alpha;
+
+            for (let i = 0; i < starCount; i++) {
+                const angle = this._stunRotation + (i / starCount) * Math.PI * 2;
+                const sx = cx + Math.cos(angle) * orbitRx;
+                const sy = cy + Math.sin(angle) * orbitRy;
+
+                // 绘制五角星
+                ctx.save();
+                ctx.translate(sx, sy);
+                ctx.rotate(angle * 1.5); // 自转
+                ctx.fillStyle = '#ffe066';
+                ctx.strokeStyle = '#ff9900';
+                ctx.lineWidth = 0.8;
+                ctx.beginPath();
+                const r1 = 4, r2 = 2, pts = 5;
+                for (let p = 0; p < pts * 2; p++) {
+                    const r = p % 2 === 0 ? r1 : r2;
+                    const a = (p / (pts * 2)) * Math.PI * 2 - Math.PI / 2;
+                    if (p === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+                    else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+                }
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            ctx.restore();
+        }
     }
 
     /**

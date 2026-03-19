@@ -220,12 +220,11 @@ func (s *DemoServer) handleAttack(session *PlayerSession, data json.RawMessage) 
 		session.Send(ServerMessage{Type: MsgError, Data: "安全区内禁止攻击"})
 		return
 	}
-	dist := distance(session.x, session.y, target.x, target.y)
 	maxDist := session.weaponAttackDist
 	if maxDist <= 0 {
 		maxDist = 100.0
 	}
-	if dist > maxDist {
+	if !isInEllipseRange(session.x, session.y, target.x, target.y, maxDist) {
 		session.Send(ServerMessage{Type: MsgError, Data: "超出攻击范围"})
 		return
 	}
@@ -860,12 +859,12 @@ func (s *DemoServer) handleAttackNPC(session *PlayerSession, data json.RawMessag
 		return
 	}
 
-	dist := distance(session.x, session.y, npc.X, npc.Y)
 	maxDist := session.weaponAttackDist
 	if maxDist <= 0 {
 		maxDist = 100.0
 	}
-	if dist > maxDist {
+	// 2.5D 椭圆距离判定（与前端 attackAllInRange 保持一致）
+	if !isInEllipseRange(session.x, session.y, npc.X, npc.Y, maxDist) {
 		s.arena.mu.Unlock()
 		session.Send(ServerMessage{Type: MsgError, Data: "超出攻击范围"})
 		return
@@ -1008,6 +1007,14 @@ func (s *DemoServer) handleCastSkillNPC(session *PlayerSession, data json.RawMes
 		}
 	}
 
+	// 锁内计算伤害，锁外广播
+	type npcDmgResult struct {
+		npc     *ArenaNPC
+		dmg     float64
+		isCrit  bool
+		dead    bool
+	}
+	var dmgResults []npcDmgResult
 	for _, h := range hits {
 		dmg := math.Round(calcDamage(session.attack*skill.Damage, h.npc.Defense))
 		if dmg < 1 {
@@ -1026,52 +1033,112 @@ func (s *DemoServer) handleCastSkillNPC(session *PlayerSession, data json.RawMes
 			h.npc.Dead = true
 			delete(s.arena.npcs, h.npc.ID)
 		}
+		// 战吼恐惧效果：设置 FearUntil（锁内）
+		if skill.Name == "战吼" && !dead {
+			dx := h.npc.X - session.x
+			dy := h.npc.Y - session.y
+			dist := math.Sqrt(dx*dx + dy*dy)
+			if dist > 0 {
+				h.npc.FearDirX = dx / dist
+				h.npc.FearDirY = dy / dist
+			} else {
+				angle := rand.Float64() * math.Pi * 2
+				h.npc.FearDirX = math.Cos(angle)
+				h.npc.FearDirY = math.Sin(angle)
+			}
+			h.npc.FearUntil = time.Now().UnixMilli() + 3000
+			h.npc.TargetID = 0
+		}
+		dmgResults = append(dmgResults, npcDmgResult{npc: h.npc, dmg: dmg, isCrit: isCrit, dead: dead})
+	}
 
-		s.arena.mu.Unlock()
+	// 战吼：收集范围内玩家目标（锁内）
+	var playerTargets []*PlayerSession
+	if skill.Name == "战吼" {
+		for id, p := range s.arena.players {
+			if id == session.charID || p.dead {
+				continue
+			}
+			if isInEllipseRange(session.x, session.y, p.x, p.y, skill.AreaSize) {
+				playerTargets = append(playerTargets, p)
+			}
+		}
+		// 战吼对玩家的恐惧效果（锁内设置）
+		for _, t := range playerTargets {
+			dx := t.x - session.x
+			dy := t.y - session.y
+			dist := math.Sqrt(dx*dx + dy*dy)
+			if dist > 0 {
+				t.FearDirX = dx / dist
+				t.FearDirY = dy / dist
+			} else {
+				angle := rand.Float64() * math.Pi * 2
+				t.FearDirX = math.Cos(angle)
+				t.FearDirY = math.Sin(angle)
+			}
+			t.FearUntil = time.Now().UnixMilli() + 3000
+		}
+	}
+	s.arena.mu.Unlock()
+
+	// 锁外广播 NPC 伤害
+	for _, r := range dmgResults {
 		s.arena.BroadcastAll(ServerMessage{Type: MsgDamageDealt, Data: map[string]interface{}{
-			"attacker_id":    session.charID,
-			"target_id":      h.npc.ID,
-			"damage":         dmg,
-			"is_crit":        isCrit,
-			"target_hp":      h.npc.HP,
-			"target_max_hp":  h.npc.MaxHP,
-			"target_is_npc":  true,
-			"skill_name":     skill.Name,
+			"attacker_id":   session.charID,
+			"target_id":     r.npc.ID,
+			"damage":        r.dmg,
+			"is_crit":       r.isCrit,
+			"target_hp":     r.npc.HP,
+			"target_max_hp": r.npc.MaxHP,
+			"target_is_npc": true,
+			"skill_name":    skill.Name,
 		}})
-		if dead {
+		if r.dead {
 			s.arena.BroadcastAll(ServerMessage{Type: MsgNPCDied, Data: map[string]interface{}{
-				"id":        h.npc.ID,
-				"name":      h.npc.Name,
+				"id":        r.npc.ID,
+				"name":      r.npc.Name,
 				"killer_id": session.charID,
 				"killer":    session.charName,
 			}})
-			s.tryNPCDrop(h.npc, session.charID)
+			s.tryNPCDrop(r.npc, session.charID)
 		}
-		s.arena.mu.Lock()
 	}
 
-	// 战吼恐惧效果：让范围内NPC恐惧逃跑3秒
+	// 战吼：锁外广播玩家伤害 + 恐惧消息
 	if skill.Name == "战吼" {
-		for _, h := range hits {
-			if !h.npc.Dead {
-				dx := h.npc.X - session.x
-				dy := h.npc.Y - session.y
-				dist := math.Sqrt(dx*dx + dy*dy)
-				if dist > 0 {
-					h.npc.FearDirX = dx / dist
-					h.npc.FearDirY = dy / dist
-				} else {
-					angle := rand.Float64() * math.Pi * 2
-					h.npc.FearDirX = math.Cos(angle)
-					h.npc.FearDirY = math.Sin(angle)
-				}
-				h.npc.FearUntil = time.Now().UnixMilli() + 3000
-				h.npc.TargetID = 0
+		for _, t := range playerTargets {
+			dmg := math.Round(calcDamage(session.attack*skill.Damage, t.defense) * 0.5)
+			if dmg < 1 {
+				dmg = 1
 			}
+			isCrit := rand.Float64() < (session.critRate + 0.05)
+			if isCrit {
+				dmg = math.Round(dmg * session.critDmg)
+			}
+			t.hp -= dmg
+			if t.hp < 0 {
+				t.hp = 0
+			}
+			s.arena.BroadcastAll(ServerMessage{Type: MsgDamageDealt, Data: map[string]interface{}{
+				"attacker_id": session.charID, "target_id": t.charID,
+				"damage": dmg, "is_crit": isCrit,
+				"target_hp": t.hp, "target_max_hp": t.maxHP, "skill_name": skill.Name,
+			}})
+			if t.hp <= 0 {
+				t.dead = true
+				s.arena.BroadcastAll(ServerMessage{Type: MsgPlayerDied, Data: map[string]interface{}{
+					"char_id": t.charID, "name": t.charName,
+					"killer_id": session.charID, "killer": session.charName,
+				}})
+				continue
+			}
+			s.arena.BroadcastAll(ServerMessage{Type: MsgSkillCasted, Data: map[string]interface{}{
+				"caster_id": session.charID, "skill_name": "战吼_fear",
+				"target_id": t.charID,
+				"fear_dir_x": t.FearDirX, "fear_dir_y": t.FearDirY,
+			}})
 		}
 	}
-
-	s.arena.mu.Unlock()
 }
 
 // respawnNPC 5秒后复活 NPC
@@ -1157,9 +1224,12 @@ func (s *DemoServer) npcAITick() {
 			npc.TargetID = 0
 			continue
 		}
-		// 恐惧结束，清除状态
+		// 恐惧结束，清除状态，重置出生点为当前位置（避免跑回原出生点而不追击）
 		if npc.FearUntil > 0 && now >= npc.FearUntil {
 			npc.FearUntil = 0
+			npc.SpawnX = npc.X
+			npc.SpawnY = npc.Y
+			npc.EnragedUntil = now + 30000 // 恐惧结束后激怒30秒，无视仇恨范围追击
 		}
 
 		// 1. 寻找最近的存活玩家
@@ -1176,8 +1246,12 @@ func (s *DemoServer) npcAITick() {
 			continue
 		}
 
-		// 2. 检查是否在仇恨范围内
-		if closestDist > npc.AggroRange {
+		// 2. 检查是否在仇恨范围内（激怒状态下无视仇恨范围）
+		isEnraged := npc.EnragedUntil > 0 && now < npc.EnragedUntil
+		if npc.EnragedUntil > 0 && now >= npc.EnragedUntil {
+			npc.EnragedUntil = 0
+		}
+		if !isEnraged && closestDist > npc.AggroRange {
 			// 超出仇恨范围，检查是否需要回归出生点
 			spawnDist := distance(npc.X, npc.Y, npc.SpawnX, npc.SpawnY)
 			if spawnDist > 5 {
@@ -1300,6 +1374,12 @@ func (s *DemoServer) npcAITick() {
 			continue // NPC 已被击杀，丢弃此攻击（不扣 HP）
 		}
 		// NPC 仍存活，此时才扣除玩家 HP
+		// 攻击成功说明已追上玩家，清除激怒状态（恢复正常仇恨范围逻辑）
+		if npc.EnragedUntil > 0 {
+			npc.EnragedUntil = 0
+			npc.SpawnX = npc.X
+			npc.SpawnY = npc.Y
+		}
 		log.Printf("[npcAITick] NPC %d(%s) 攻击玩家 %d, damage=%.0f, 玩家HP: %.0f -> %.0f", atk.npcID, atk.npcName, atk.targetID, atk.damage, atk.target.hp, atk.target.hp-atk.damage)
 		atk.target.hp -= atk.damage
 		if atk.target.hp < 0 {

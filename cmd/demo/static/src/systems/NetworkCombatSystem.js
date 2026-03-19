@@ -288,6 +288,25 @@ export class NetworkCombatSystem {
             return;
         }
 
+        // ellipse 类型（旋风斩/战吼）：以玩家为中心的 AOE，不依赖 selectedTarget
+        if (skill && skill.area_type === 'ellipse') {
+            // 统一发 cast_skill_npc，后端战吼会同时处理玩家目标
+            scene.ws.send('cast_skill_npc', { skill_id: skillId, target_id: 0, target_x: targetX, target_y: targetY });
+            if (skill) {
+                scene.skillCooldowns[skillId] = now + skill.cooldown * 1000;
+                const combat = scene.playerEntity.getComponent('combat');
+                if (combat) {
+                    const combatSkillId = `backend_${skillId}`;
+                    combat.skillCooldowns.set(combatSkillId, performance.now());
+                    combat.startSkillPipeline({
+                        ...skill,
+                        phaseDurations: { windup: 100, hit: 50, settle: 50, recovery: 200 }
+                    });
+                }
+            }
+            return;
+        }
+
         const isNPC = scene.selectedTarget && this._isNPCTarget(scene.selectedTarget);
         if (scene.selectedTarget) {
             const target = this._getTargetEntity(scene.selectedTarget);

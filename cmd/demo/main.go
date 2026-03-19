@@ -200,6 +200,9 @@ type ArenaNPC struct {
 	FearDirX  float64 // 恐惧逃跑方向 X
 	FearDirY  float64 // 恐惧逃跑方向 Y
 
+	// 激怒状态（恐惧结束后短暂无视仇恨范围限制）
+	EnragedUntil int64 // 激怒结束时间（UnixMilli），0 表示无激怒
+
 	// 昏迷状态（战吼对玩家效果）
 	StunUntil int64 // 昏迷结束时间（UnixMilli），0 表示无昏迷
 }
