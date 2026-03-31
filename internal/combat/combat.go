@@ -533,3 +533,4 @@ func EndCombatAndSave(
 	}
 	return log, nil
 }
+

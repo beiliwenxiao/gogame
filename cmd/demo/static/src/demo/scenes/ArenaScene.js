@@ -8,6 +8,16 @@ import { EntityFactory } from '../../ecs/EntityFactory.js';
 import { NameComponent } from '../../ecs/components/NameComponent.js';
 import { calcDamage, applyCrit, SKILL_PHASE, TARGET_MODE_FROM_STRING } from '../../ecs/ComponentTypes.js';
 import { NetworkCombatSystem } from '../../systems/NetworkCombatSystem.js';
+import { MultiplayerManager } from '../../core/MultiplayerManager.js';
+import { SkillParticleEffects } from '../../rendering/SkillParticleEffects.js';
+import { SkillRangeIndicator } from '../../rendering/SkillRangeIndicator.js';
+import { StunEffectRenderer } from '../../rendering/StunEffectRenderer.js';
+import { GroundDropRenderer } from '../../rendering/GroundDropRenderer.js';
+import { BoneCorpseRenderer } from '../../rendering/BoneCorpseRenderer.js';
+import { MoveTargetIndicator } from '../../rendering/MoveTargetIndicator.js';
+import { PickupSystem } from '../../systems/PickupSystem.js';
+import { EquipmentSyncSystem } from '../../systems/EquipmentSyncSystem.js';
+import { SkillSyncSystem } from '../../systems/SkillSyncSystem.js';
 
 export class ArenaScene extends BaseGameScene {
     constructor() {
@@ -51,8 +61,17 @@ export class ArenaScene extends BaseGameScene {
         // 浮动伤害文字
         this.floatingTexts = [];
         
-        // 技能范围指示器
-        this.skillRangeIndicators = [];
+        // 技能范围指示器（委托 SkillRangeIndicator）
+        this.skillRangeIndicator = new SkillRangeIndicator();
+        // 兼容旧代码访问 skillRangeIndicators 数组
+        this.skillRangeIndicators = this.skillRangeIndicator.indicators;
+
+        // 昏迷/恐惧转圈效果渲染器
+        this.stunEffectRenderer = new StunEffectRenderer();
+
+        // 移动目标指示器
+        this.moveTargetIndicator = new MoveTargetIndicator();
+        this.moveTargetIndicators = this.moveTargetIndicator.indicators;
         
         // 覆盖 canvas ID（使用 engineCanvas 而非 gameCanvas）
         this.canvasId = 'engineCanvas';
@@ -81,6 +100,14 @@ export class ArenaScene extends BaseGameScene {
 
         // 联网战斗系统
         this.networkCombat = new NetworkCombatSystem(this);
+
+        // 多人实体管理器（远程玩家 + NPC 生命周期 + 位置插值）
+        this.multiplayerManager = new MultiplayerManager(this, {
+            directionMap: this._netToDir
+        });
+        // 让 remotePlayers / npcEntities 直接引用 manager 的 Map，保持外部访问兼容
+        this.remotePlayers = this.multiplayerManager.remotePlayers;
+        this.npcEntities = this.multiplayerManager.npcEntities;
 
         // 昏迷/恐惧转圈效果：旋转角度（弧度），每帧递增
         this._stunRotation = 0;
@@ -260,72 +287,17 @@ export class ArenaScene extends BaseGameScene {
     }
 
     /**
-     * 添加远程玩家实体
+     * 添加远程玩家实体（委托 MultiplayerManager）
      */
     addRemotePlayer(serverData) {
-        if (this.remotePlayers.has(serverData.char_id)) return;
-        
-        const entity = this.entityFactory.createPlayer({
-            name: serverData.name,
-            class: serverData.class === 'warrior' ? 'warrior' : 'archer',
-            level: serverData.level || 1,
-            position: { x: serverData.x, y: serverData.y },
-            stats: {
-                maxHp: serverData.max_hp,
-                attack: serverData.attack,
-                defense: serverData.defense,
-                speed: serverData.speed,
-                critRate: serverData.crit_rate || 0.1,
-                critDamage: serverData.crit_damage || 1.5
-            }
-        });
-        
-        // 设置当前 HP/MP
-        const stats = entity.getComponent('stats');
-        if (stats) {
-            stats.hp = serverData.hp;
-            stats.mp = serverData.mp;
-            stats.maxMp = serverData.max_mp;
-        }
-        
-        // 竞技场中远程玩家设为敌对阵营（对齐后端阵营判定）
-        entity.faction = 'enemy';
-        const combat = entity.getComponent('combat');
-        if (combat) {
-            combat.faction = 'enemy';
-        }
-        
-        // 标记为远程玩家
-        entity.isRemote = true;
-        entity.charId = serverData.char_id;
-        entity.dead = serverData.dead || false;
-        entity.targetX = serverData.x;
-        entity.targetY = serverData.y;
-        
-        // 添加名字组件
-        entity.addComponent(new NameComponent(serverData.name, {
-            color: '#ffffff',
-            fontSize: 14,
-            offsetY: -10
-        }));
-        
-        this.entities.push(entity);
-        this.remotePlayers.set(serverData.char_id, entity);
+        this.multiplayerManager.addRemotePlayer(serverData);
     }
 
     /**
-     * 移除远程玩家
+     * 移除远程玩家（委托 MultiplayerManager）
      */
     removeRemotePlayer(charId) {
-        const entity = this.remotePlayers.get(charId);
-        if (entity) {
-            const idx = this.entities.indexOf(entity);
-            if (idx >= 0) this.entities.splice(idx, 1);
-            this.remotePlayers.delete(charId);
-        }
-        if (this.selectedTarget === charId) {
-            this.selectedTarget = null;
-        }
+        this.multiplayerManager.removeRemotePlayer(charId);
     }
 
     /**
@@ -362,96 +334,14 @@ export class ArenaScene extends BaseGameScene {
         // 发送移动到服务端（昏迷时不发送，恐惧移动需要同步位置）
         if (!isStunned) this.sendMovement();
         
-        // 插值远程玩家位置 + 同步行走动画
-        for (const [id, entity] of this.remotePlayers) {
-            if (entity.targetX !== undefined) {
-                const transform = entity.getComponent('transform');
-                if (transform) {
-                    const dx = entity.targetX - transform.position.x;
-                    const dy = entity.targetY - transform.position.y;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
-                    
-                    // 基于 deltaTime 的平滑插值，距离太远则瞬移，很近则snap
-                    if (dist > 300) {
-                        transform.position.x = entity.targetX;
-                        transform.position.y = entity.targetY;
-                    } else if (dist < 1) {
-                        // 距离很近，直接到位，避免漂移
-                        transform.position.x = entity.targetX;
-                        transform.position.y = entity.targetY;
-                    } else {
-                        const lerp = 1 - Math.pow(0.9, deltaTime * 60);
-                        transform.position.x += dx * lerp;
-                        transform.position.y += dy * lerp;
-                    }
-                    
-                    // 根据最近收到移动消息的时间判断行走状态
-                    const sprite = entity.getComponent('sprite');
-                    if (sprite) {
-                        const timeSinceMove = Date.now() - (entity._lastMoveTime || 0);
-                        if (dist > 2 && timeSinceMove < 200) {
-                            sprite.isWalking = true;
-                        } else if (dist <= 2 || timeSinceMove >= 200) {
-                            sprite.isWalking = false;
-                        }
-                    }
-                }
-            }
-        }
-        
-        // 插值 NPC 位置 - 指数平滑插值，与远程玩家保持一致
-        for (const [id, entity] of this.npcEntities) {
-            if (entity.dead) continue;
-            if (entity.targetX !== undefined) {
-                const transform = entity.getComponent('transform');
-                if (transform) {
-                    const dx = entity.targetX - transform.position.x;
-                    const dy = entity.targetY - transform.position.y;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
-                    
-                    if (dist > 400) {
-                        // 距离过远直接瞬移
-                        transform.position.x = entity.targetX;
-                        transform.position.y = entity.targetY;
-                    } else if (dist < 0.5) {
-                        transform.position.x = entity.targetX;
-                        transform.position.y = entity.targetY;
-                    } else {
-                        // 匀速插值：按 NPC speed 属性移动，避免"冲-停"跳动感
-                        const stats = entity.getComponent('stats');
-                        const speed = (stats && stats.speed) ? stats.speed : 80;
-                        const maxStep = speed * deltaTime;
-                        if (dist <= maxStep) {
-                            transform.position.x = entity.targetX;
-                            transform.position.y = entity.targetY;
-                        } else {
-                            transform.position.x += (dx / dist) * maxStep;
-                            transform.position.y += (dy / dist) * maxStep;
-                        }
-                    }
-                    
-                    const sprite = entity.getComponent('sprite');
-                    if (sprite) {
-                        const timeSinceMove = Date.now() - (entity._lastMoveTime || 0);
-                        if (dist > 1 && timeSinceMove < 800) {
-                            sprite.isWalking = true;
-                        } else if (dist <= 1 || timeSinceMove >= 800) {
-                            sprite.isWalking = false;
-                        }
-                    }
-                }
-            }
-        }
+        // 插值远程玩家位置 + NPC 位置（委托 MultiplayerManager）
+        this.multiplayerManager.update(deltaTime);
         
         // 更新技能范围指示器
-        this.skillRangeIndicators = this.skillRangeIndicators.filter(ind => {
-            ind.life -= deltaTime;
-            ind.dashOffset += 60 * deltaTime;
-            return ind.life > 0;
-        });
+        this.skillRangeIndicator.update(deltaTime);
 
         // 更新昏迷/恐惧转圈旋转角
-        this._stunRotation = (this._stunRotation + deltaTime * Math.PI * 2.5) % (Math.PI * 2);
+        this.stunEffectRenderer.update(deltaTime);
 
         // 旋风斩持续粒子（每秒触发一次，与后端伤害 tick 同步）
         if (this._whirlwindUntil > 0 && this.playerEntity && !this.playerEntity.dead) {
@@ -462,7 +352,7 @@ export class ArenaScene extends BaseGameScene {
                 this._whirlwindNextParticle = now + 1000;
                 const t = this.playerEntity.getComponent('transform');
                 if (t) {
-                    this._emitWhirlwindParticles(t.position.x, t.position.y, this._whirlwindAreaSize);
+                    SkillParticleEffects.emitWhirlwind(this.particleSystem, t.position.x, t.position.y, this._whirlwindAreaSize);
                 }
             }
         }
@@ -481,16 +371,12 @@ export class ArenaScene extends BaseGameScene {
                 const ePressed = this.inputManager.isKeyPressed('e') || this.inputManager.isKeyPressed('E');
                 const leftClicked = this.inputManager.isMouseClicked() && this.inputManager.getMouseButton() === 0;
                 if (ePressed || leftClicked) {
-                    console.log('[Pickup] 触发拾取检测, groundDrops:', this.groundDrops.length, 'ePressed:', ePressed, 'leftClicked:', leftClicked, 'px:', px.toFixed(0), 'py:', py.toFixed(0));
-                    // 找范围内最近的未拾取掉落物
                     let nearest = null, nearestDist = 60;
                     for (const drop of this.groundDrops) {
                         if (drop.picked) continue;
                         const dx = drop.x - px, dy = drop.y - py;
                         const dist = Math.sqrt(dx * dx + dy * dy);
-                        console.log('[Pickup] 掉落物:', drop.dropType, 'dist:', dist.toFixed(1), 'drop.x:', drop.x.toFixed(0), 'drop.y:', drop.y.toFixed(0));
                         if (dist < nearestDist) {
-                            // 左键点击时额外检查鼠标是否在掉落物附近
                             if (leftClicked) {
                                 const mouseWorld = this.inputManager.getMouseWorldPosition(this.camera);
                                 if (mouseWorld) {
@@ -503,7 +389,7 @@ export class ArenaScene extends BaseGameScene {
                         }
                     }
                     if (nearest) {
-                        this._pickupGroundDrop(nearest);
+                        PickupSystem.pickup(this.playerEntity, nearest, this.floatingTextManager);
                         if (leftClicked) this.inputManager.markMouseClickHandled();
                     }
                 }
@@ -517,20 +403,11 @@ export class ArenaScene extends BaseGameScene {
         // 检测右键点击 → 添加移动目标指示器
         if (this.inputManager && this.inputManager.isMouseClicked() && this.inputManager.getMouseButton() === 2) {
             const clickPos = this.inputManager.getMouseWorldPosition(this.camera);
-            if (clickPos) {
-                // 清除旧指示器，只保留最新一个
-                this.moveTargetIndicators = [{
-                    x: clickPos.x, y: clickPos.y,
-                    life: 1.0, maxLife: 1.0
-                }];
-            }
+            if (clickPos) this.moveTargetIndicator.show(clickPos.x, clickPos.y);
         }
 
         // 更新移动目标指示器倒计时
-        this.moveTargetIndicators = this.moveTargetIndicators.filter(m => {
-            m.life -= deltaTime;
-            return m.life > 0;
-        });
+        this.moveTargetIndicator.update(deltaTime);
         
         // 空格键触发普攻（委托 NetworkCombatSystem，昏迷/恐惧时禁止）
         if (!isStunned && !isFeared) this.networkCombat.handleSpaceAttack();
@@ -661,22 +538,7 @@ export class ArenaScene extends BaseGameScene {
     }
 
     onPlayerMoved(data) {
-        const entity = this.remotePlayers.get(data.char_id);
-        if (!entity) return;
-
-        entity.targetX = data.x;
-        entity.targetY = data.y;
-
-        // 同步方向到精灵组件（网络简写 -> 引擎方向），并标记行走状态
-        const sprite = entity.getComponent('sprite');
-        if (sprite) {
-            if (data.direction) {
-                sprite.direction = this._netToDir[data.direction] || data.direction;
-            }
-            sprite.isWalking = true;
-        }
-        // 记录收到移动的时间，用于停止行走判断
-        entity._lastMoveTime = Date.now();
+        this.multiplayerManager.onPlayerMoved(data);
     }
 
 
@@ -842,106 +704,46 @@ export class ArenaScene extends BaseGameScene {
 
     onStateSync(data) {
         if (!data || !data.players) return;
-        const serverIds = new Set();
 
+        // 自己的状态同步（位置由本地控制）
         for (const p of data.players) {
-            serverIds.add(p.char_id);
-
-            if (p.char_id === this.selfId) {
-                // 自己：同步 HP/MP 和战斗属性（位置由本地控制）
-                if (this.playerEntity) {
-                    const stats = this.playerEntity.getComponent('stats');
-                    if (stats) {
-                        if (p.hp !== undefined) stats.hp = p.hp;
-                        if (p.max_hp !== undefined) stats.maxHp = p.max_hp;
-                        if (p.mp !== undefined) stats.mp = p.mp;
-                        if (p.max_mp !== undefined) stats.maxMp = p.max_mp;
-                        if (p.attack !== undefined) stats.attack = p.attack;
-                        if (p.defense !== undefined) stats.defense = p.defense;
-                        if (p.crit_rate !== undefined) stats.critRate = p.crit_rate;
-                        if (p.crit_damage !== undefined) stats.critDamage = p.crit_damage;
-                    }
-                    if (p.dead !== undefined) {
-                        if (p.dead && !this.playerEntity.dead) {
-                            this.playerEntity.dead = true;
-                            this.playerEntity.isDead = true;
-                            this.playerEntity.isDying = true;
-                            const sprite = this.playerEntity.getComponent('sprite');
-                            if (sprite) { sprite.alpha = 0.3; sprite.isWalking = false; }
-                        } else if (!p.dead && this.playerEntity.dead) {
-                            this.playerEntity.dead = false;
-                            this.playerEntity.isDead = false;
-                            this.playerEntity.isDying = false;
-                            const sprite = this.playerEntity.getComponent('sprite');
-                            if (sprite) sprite.alpha = 1.0;
-                        }
-                    }
-                }
-                continue;
+            if (p.char_id !== this.selfId) continue;
+            if (!this.playerEntity) continue;
+            const stats = this.playerEntity.getComponent('stats');
+            if (stats) {
+                if (p.hp !== undefined) stats.hp = p.hp;
+                if (p.max_hp !== undefined) stats.maxHp = p.max_hp;
+                if (p.mp !== undefined) stats.mp = p.mp;
+                if (p.max_mp !== undefined) stats.maxMp = p.max_mp;
+                if (p.attack !== undefined) stats.attack = p.attack;
+                if (p.defense !== undefined) stats.defense = p.defense;
+                if (p.crit_rate !== undefined) stats.critRate = p.crit_rate;
+                if (p.crit_damage !== undefined) stats.critDamage = p.crit_damage;
             }
-
-            // 远程玩家
-            const entity = this.remotePlayers.get(p.char_id);
-            if (entity) {
-                if (p.x !== undefined) entity.targetX = p.x;
-                if (p.y !== undefined) entity.targetY = p.y;
-                if (p.dead !== undefined) {
-                    entity.dead = p.dead;
-                    entity.isDead = p.dead;
-                    entity.isDying = p.dead;
+            if (p.dead !== undefined) {
+                if (p.dead && !this.playerEntity.dead) {
+                    this.playerEntity.dead = true;
+                    this.playerEntity.isDead = true;
+                    this.playerEntity.isDying = true;
+                    const sprite = this.playerEntity.getComponent('sprite');
+                    if (sprite) { sprite.alpha = 0.3; sprite.isWalking = false; }
+                } else if (!p.dead && this.playerEntity.dead) {
+                    this.playerEntity.dead = false;
+                    this.playerEntity.isDead = false;
+                    this.playerEntity.isDying = false;
+                    const sprite = this.playerEntity.getComponent('sprite');
+                    if (sprite) sprite.alpha = 1.0;
                 }
-                const sprite = entity.getComponent('sprite');
-                if (sprite) {
-                    if (p.direction) sprite.direction = this._netToDir[p.direction] || p.direction;
-                    if (p.dead !== undefined) {
-                        sprite.alpha = p.dead ? 0.3 : 1.0;
-                        if (p.dead) sprite.isWalking = false;
-                    }
-                }
-                const stats = entity.getComponent('stats');
-                if (stats) {
-                    if (p.hp !== undefined) stats.hp = p.hp;
-                    if (p.max_hp !== undefined) stats.maxHp = p.max_hp;
-                    if (p.mp !== undefined) stats.mp = p.mp;
-                    if (p.max_mp !== undefined) stats.maxMp = p.max_mp;
-                    if (p.attack !== undefined) stats.attack = p.attack;
-                    if (p.defense !== undefined) stats.defense = p.defense;
-                    if (p.crit_rate !== undefined) stats.critRate = p.crit_rate;
-                    if (p.crit_damage !== undefined) stats.critDamage = p.crit_damage;
-                }
-            } else if (p.name) {
-                // 新玩家（有 name 字段说明是全量数据），添加到场景
-                this.addRemotePlayer(p);
             }
         }
 
-        // 玩家离开由 player_left 事件处理，增量同步不移除
-        
-        // 同步 NPC 状态
-        if (data.npcs) {
-            for (const npc of data.npcs) {
-                const entity = this.npcEntities.get(npc.id);
-                if (entity) {
-                    const stats = entity.getComponent('stats');
-                    if (stats) {
-                        if (npc.hp !== undefined) stats.hp = npc.hp;
-                        if (npc.max_hp !== undefined) stats.maxHp = npc.max_hp;
-                    }
-                    // NPC 死亡时直接移除
-                    if (npc.dead) {
-                        entity.isDead = true;
-                        entity.isDying = true;
-                        if (this.selectedTarget === npc.id) this.selectedTarget = null;
-                        const idx = this.entities.indexOf(entity);
-                        if (idx >= 0) this.entities.splice(idx, 1);
-                        if (this.engine && this.engine.entityManager) {
-                            this.engine.entityManager.removeEntity(entity);
-                        }
-                        this.npcEntities.delete(npc.id);
-                    }
-                }
-            }
-        }
+        // 远程玩家 + NPC 同步（委托 MultiplayerManager）
+        this.multiplayerManager.applyStateSync(
+            data,
+            this.selfId,
+            (p) => this.addRemotePlayer(p),
+            this
+        );
     }
 
     onSkillCasted(data) {
@@ -965,97 +767,18 @@ export class ArenaScene extends BaseGameScene {
      * @param {Object} data - { npcs: [{ id, name, template, level, x, y, hp, max_hp, attack, defense, speed, dead }] }
      */
     onNPCSpawn(data) {
-        if (!data || !data.npcs) return;
-        
-        for (const npc of data.npcs) {
-            // 已存在则跳过
-            if (this.npcEntities.has(npc.id)) continue;
-            
-            const entity = this.entityFactory.createEnemy({
-                id: `npc_${npc.id}`,
-                templateId: npc.template,
-                name: npc.name,
-                level: npc.level,
-                position: { x: npc.x, y: npc.y },
-                stats: {
-                    maxHp: npc.max_hp,
-                    hp: npc.hp,
-                    attack: npc.attack,
-                    defense: npc.defense,
-                    speed: npc.speed
-                },
-                aiType: 'passive'
-            });
-            
-            // 存储后端 NPC ID（负数）
-            entity.npcId = npc.id;
-            entity.dead = npc.dead || false;
-            entity.isDead = entity.dead;
-            entity.isDying = entity.dead;
-            if (entity.dead) {
-                const sprite = entity.getComponent('sprite');
-                if (sprite) { sprite.alpha = 0.3; sprite.isWalking = false; }
-            }
-            
-            this.entities.push(entity);
-            this.npcEntities.set(npc.id, entity);
-        }
-        
-        console.log(`ArenaScene: 刷新 ${data.npcs.length} 个 NPC，当前 NPC 总数: ${this.npcEntities.size}`);
+        this.multiplayerManager.onNPCSpawn(data);
     }
 
     /**
-     * 处理 NPC 死亡事件
-     * @param {Object} data - { npc_id, killer }
+     * 处理 NPC 死亡事件（委托 MultiplayerManager）
      */
     onNPCDied(data) {
-        const npcId = data.npc_id || data.id;
-        const entity = this.npcEntities.get(npcId);
-        if (!entity) return;
-        
-        // 同步双标志，阻止 CombatSystem 单机复活逻辑
-        entity.dead = true;
-        entity.isDead = true;
-        entity.isDying = true;
-        
-        // 显示击杀信息
-        const transform = entity.getComponent('transform');
-        if (transform && this.floatingTextManager) {
-            this.floatingTextManager.addText(
-                transform.position.x,
-                transform.position.y - 40,
-                `${entity.name} 被击杀`,
-                '#ff8800'
-            );
-        }
-        
-        // 取消选中
-        if (this.selectedTarget === npcId) {
-            this.selectedTarget = null;
-        }
-        
-        // 记录白骨位置（10秒后消失）
-        if (transform) {
-            this.boneCorpses.push({
-                x: transform.position.x,
-                y: transform.position.y,
-                life: 10,
-                maxLife: 10
-            });
-        }
-
-        // 立即移除死亡 NPC 实体
-        const idx = this.entities.indexOf(entity);
-        if (idx >= 0) this.entities.splice(idx, 1);
-        if (this.engine && this.engine.entityManager) {
-            this.engine.entityManager.removeEntity(entity);
-        }
-        this.npcEntities.delete(npcId);
+        this.multiplayerManager.onNPCDied(data, { boneCorpses: this.boneCorpses });
     }
 
     /**
      * 处理篝火倒计时广播
-     * @param {Object} data - { countdown: number }
      */
     onCampfireTick(data) {
         if (!data || data.countdown === undefined) return;
@@ -1065,28 +788,10 @@ export class ArenaScene extends BaseGameScene {
     }
 
     /**
-     * 处理 NPC 位置更新（AI 移动）
-     * @param {Object} data - { npcs: [{ id, x, y, direction }] }
+     * 处理 NPC 位置更新（委托 MultiplayerManager）
      */
     onNPCUpdate(data) {
-        if (!data || !data.npcs) return;
-        
-        for (const npcData of data.npcs) {
-            const entity = this.npcEntities.get(npcData.id);
-            if (!entity || entity.dead) continue;
-            
-            // 设置目标位置用于插值
-            entity.targetX = npcData.x;
-            entity.targetY = npcData.y;
-            entity._lastMoveTime = Date.now();
-            
-            // 同步方向
-            const sprite = entity.getComponent('sprite');
-            if (sprite && npcData.direction) {
-                sprite.direction = this._netToDir[npcData.direction] || npcData.direction;
-                sprite.isWalking = true;
-            }
-        }
+        this.multiplayerManager.onNPCUpdate(data);
     }
 
     /**
@@ -1248,7 +953,7 @@ export class ArenaScene extends BaseGameScene {
             renderQueue.push({
                 type: 'bone',
                 y: bone.y,
-                render: () => this._renderBoneCorpse(ctx, bone)
+                render: () => BoneCorpseRenderer.render(ctx, bone)
             });
         }
 
@@ -1258,17 +963,17 @@ export class ArenaScene extends BaseGameScene {
                 renderQueue.push({
                     type: 'drop',
                     y: drop.y,
-                    render: () => this._renderGroundDrop(ctx, drop)
+                    render: () => GroundDropRenderer.render(ctx, drop)
                 });
             }
         }
 
         // 添加移动目标指示器
-        for (const m of this.moveTargetIndicators) {
+        for (const m of this.moveTargetIndicator.indicators) {
             renderQueue.push({
                 type: 'moveTarget',
                 y: m.y,
-                render: () => this._renderMoveTargetIndicator(ctx, m)
+                render: () => MoveTargetIndicator.renderOne(ctx, m)
             });
         }
 
@@ -1292,106 +997,30 @@ export class ArenaScene extends BaseGameScene {
         }
 
         // 技能范围虚线（跟随玩家，始终在最上层）
-        this._renderSkillRangeIndicator(ctx);
+        this.skillRangeIndicator.render(ctx, this._getFootCenter());
 
         // 昏迷/恐惧转圈效果（在所有实体上层绘制）
-        this._renderStunEffects(ctx);
+        const allEntities = [
+            ...(this.playerEntity ? [this.playerEntity] : []),
+            ...Array.from(this.remotePlayers.values()),
+            ...Array.from(this.npcEntities.values())
+        ];
+        this.stunEffectRenderer.render(ctx, allEntities);
     }
 
     /**
-     * 渲染技能范围虚线指示器（触发后显示，1秒淡出）
-     * 从 skillRangeIndicators 数组读取活跃的指示器
+     * 渲染技能范围虚线指示器（委托 SkillRangeIndicator）
+     * @deprecated 直接在 renderWorldObjects 中调用 skillRangeIndicator.render()
      */
     _renderSkillRangeIndicator(ctx) {
-            if (this.skillRangeIndicators.length === 0) return;
-
-            // 实时跟随玩家脚下位置
-            const foot = this._getFootCenter();
-            if (!foot) return;
-            // DEBUG: 确认每帧坐标是否变化
-            if (!this._lastFootLog || Date.now() - this._lastFootLog > 200) {
-                console.log('[SkillRange] foot=', foot.x.toFixed(1), foot.y.toFixed(1), 'indicators=', this.skillRangeIndicators.length);
-                this._lastFootLog = Date.now();
-            }
-
-            ctx.save();
-
-            for (const ind of this.skillRangeIndicators) {
-                // 淡出：最后 0.5 秒渐隐
-                const alpha = ind.life < 0.5 ? ind.life / 0.5 : 1;
-                ctx.globalAlpha = alpha * 0.8;
-                ctx.setLineDash([6, 4]);
-                ctx.lineDashOffset = ind.dashOffset || 0;
-                ctx.lineWidth = 1.5;
-
-                // 使用实时玩家脚下坐标
-                const cx = foot.x;
-                const cy = foot.y;
-
-                if (ind.areaType === 'fan') {
-                    const halfAngle = ind.halfAngle || Math.PI / 4;
-                    const steps = 32;
-                    ctx.strokeStyle = ind.color || 'rgba(255, 160, 50, 0.85)';
-                    ctx.fillStyle = ind.fillColor || 'rgba(255, 160, 50, 0.10)';
-                    ctx.beginPath();
-                    ctx.moveTo(cx, cy);
-                    for (let i = 0; i <= steps; i++) {
-                        const a = (ind.direction - halfAngle) + (i / steps) * halfAngle * 2;
-                        ctx.lineTo(cx + Math.cos(a) * ind.rx, cy + Math.sin(a) * ind.ry);
-                    }
-                    ctx.closePath();
-                    ctx.fill();
-                    ctx.stroke();
-
-                } else if (ind.areaType === 'ellipse') {
-                    ctx.strokeStyle = ind.color || 'rgba(100, 200, 255, 0.85)';
-                    ctx.fillStyle = ind.fillColor || 'rgba(100, 200, 255, 0.08)';
-                    ctx.beginPath();
-                    ctx.ellipse(cx, cy, ind.rx, ind.ry, 0, 0, Math.PI * 2);
-                    ctx.fill();
-                    ctx.stroke();
-
-                } else if (ind.areaType === 'circle') {
-                    // 圆形范围（以目标点为中心，不跟随玩家）— 2.5D 椭圆渲染
-                    const tcx = ind.targetX || cx;
-                    const tcy = ind.targetY || cy;
-                    ctx.strokeStyle = ind.color || 'rgba(100, 200, 255, 0.85)';
-                    ctx.fillStyle = ind.fillColor || 'rgba(100, 200, 255, 0.08)';
-                    ctx.beginPath();
-                    ctx.ellipse(tcx, tcy, ind.rx, ind.ry, 0, 0, Math.PI * 2);
-                    ctx.fill();
-                    ctx.stroke();
-                }
-            }
-
-            ctx.setLineDash([]);
-            ctx.lineDashOffset = 0;
-            ctx.globalAlpha = 1;
-            ctx.restore();
-        }
-
-
+        this.skillRangeIndicator.render(ctx, this._getFootCenter());
+    }
 
     /**
-     * 触发技能范围指示器显示
-     * @param {Object} opts - {areaType, x, y, rx, ry, direction?, halfAngle?, color?, fillColor?, duration?}
+     * 触发技能范围指示器显示（委托 SkillRangeIndicator）
      */
     _showSkillRange(opts) {
-        this.skillRangeIndicators.push({
-            areaType: opts.areaType,
-            x: opts.x,
-            y: opts.y,
-            rx: opts.rx,
-            ry: opts.ry,
-            targetX: opts.targetX,
-            targetY: opts.targetY,
-            direction: opts.direction || 0,
-            halfAngle: opts.halfAngle || Math.PI / 4,
-            color: opts.color,
-            fillColor: opts.fillColor,
-            life: opts.duration || 1.0,
-            maxLife: opts.duration || 1.0
-        });
+        this.skillRangeIndicator.show(opts);
     }
 
     /**
@@ -1477,157 +1106,20 @@ export class ArenaScene extends BaseGameScene {
     }
 
     /**
-     * 发射旋风斩粒子效果（施法时和每秒 tick 时复用）
+     * 发射旋风斩粒子（委托 SkillParticleEffects）
      */
     _emitWhirlwindParticles(cx, cy, radius) {
-        if (!this.particleSystem) return;
-        // 外圈旋风（快速旋转的风刃粒子）
-        for (let i = 0; i < 30; i++) {
-            const angle = (i / 30) * Math.PI * 2;
-            const r = radius * (0.4 + Math.random() * 0.6);
-            this.particleSystem.emit({
-                position: { x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r * 0.5 },
-                velocity: { x: Math.cos(angle + Math.PI / 2) * 120, y: Math.sin(angle + Math.PI / 2) * 60 },
-                life: 600,
-                size: 3 + Math.random() * 4,
-                color: '#aaddff',
-                alpha: 0.85,
-                gravity: 0,
-                friction: 0.93
-            });
-        }
-        // 内圈旋风（较小、较快）
-        for (let i = 0; i < 16; i++) {
-            const angle = (i / 16) * Math.PI * 2 + Math.random() * 0.3;
-            const r = radius * 0.3;
-            this.particleSystem.emit({
-                position: { x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r * 0.5 },
-                velocity: { x: Math.cos(angle + Math.PI / 2) * 160, y: Math.sin(angle + Math.PI / 2) * 80 },
-                life: 400,
-                size: 2 + Math.random() * 2,
-                color: '#ffffff',
-                alpha: 0.9,
-                gravity: 0,
-                friction: 0.90
-            });
-        }
-        // 地面尘土飞扬
-        this.particleSystem.emitBurst({
-            position: { x: cx, y: cy },
-            velocity: { x: 0, y: 0 },
-            life: 500,
-            size: 4,
-            color: '#998866',
-            alpha: 0.5,
-            gravity: -10,
-            friction: 0.92
-        }, 10, {
-            velocityRange: { min: 30, max: 80 },
-            angleRange: { min: 0, max: Math.PI * 2 },
-            sizeRange: { min: 3, max: 6 },
-            lifeRange: { min: 300, max: 600 }
-        });
+        SkillParticleEffects.emitWhirlwind(this.particleSystem, cx, cy, radius);
     }
 
-    /**
-     * 渲染 NPC 死亡白骨（最后3秒淡出）
-     */
+    /** 渲染 NPC 死亡白骨（委托 BoneCorpseRenderer） */
     _renderBoneCorpse(ctx, bone) {
-        const x = bone.x;
-        const y = bone.y;
-        // 最后3秒淡出
-        const alpha = bone.life < 3 ? bone.life / 3 : 1;
-
-        ctx.save();
-        ctx.globalAlpha = alpha * 0.85;
-        ctx.translate(x, y - 8);
-
-        // 头骨
-        ctx.fillStyle = '#d4cfc0';
-        ctx.beginPath();
-        ctx.ellipse(0, -14, 7, 6, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#a09880';
-        ctx.lineWidth = 0.8;
-        ctx.stroke();
-
-        // 眼眶
-        ctx.fillStyle = '#2a2520';
-        ctx.beginPath();
-        ctx.ellipse(-2.5, -15, 1.8, 1.5, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.ellipse(2.5, -15, 1.8, 1.5, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        // 躯干骨骼（横向散落）
-        ctx.strokeStyle = '#c8c3b0';
-        ctx.lineWidth = 2.5;
-        ctx.lineCap = 'round';
-        // 脊椎
-        ctx.beginPath();
-        ctx.moveTo(0, -8);
-        ctx.lineTo(0, 2);
-        ctx.stroke();
-        // 肋骨
-        ctx.lineWidth = 1.2;
-        for (let i = 0; i < 3; i++) {
-            const ry = -6 + i * 3;
-            ctx.beginPath();
-            ctx.moveTo(0, ry);
-            ctx.quadraticCurveTo(-6, ry - 1, -7, ry + 2);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(0, ry);
-            ctx.quadraticCurveTo(6, ry - 1, 7, ry + 2);
-            ctx.stroke();
-        }
-        // 腿骨（散落）
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(-5, 3);
-        ctx.lineTo(-9, 10);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(3, 3);
-        ctx.lineTo(8, 9);
-        ctx.stroke();
-
-        ctx.restore();
+        BoneCorpseRenderer.render(ctx, bone);
     }
 
-    /**
-     * 渲染移动目标指示器（2.5D 等距椭圆）
-     */
+    /** 渲染移动目标指示器（委托 MoveTargetIndicator） */
     _renderMoveTargetIndicator(ctx, m) {
-        // progress: 0(刚触发) → 1(结束)
-        const progress = 1 - m.life / m.maxLife;
-        // 淡出：最后 30% 生命周期渐隐
-        const alpha = m.life < 0.3 ? m.life / 0.3 : 1;
-
-        // 收缩动画：从大圈缩到小圈
-        const maxRx = 30, minRx = 8;
-        const rx = maxRx - (maxRx - minRx) * progress;
-        const ry = rx / 2; // 2.5D 等距
-
-        ctx.save();
-        ctx.globalAlpha = alpha * 0.7;
-
-        // 外圈
-        ctx.strokeStyle = '#00ff88';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.ellipse(m.x, m.y, rx, ry, 0, 0, Math.PI * 2);
-        ctx.stroke();
-
-        // 内部填充光晕（随收缩变浓）
-        const fillAlpha = 0.1 + 0.2 * progress;
-        ctx.fillStyle = `rgba(0, 255, 136, ${fillAlpha})`;
-        ctx.beginPath();
-        ctx.ellipse(m.x, m.y, rx, ry, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.restore();
+        MoveTargetIndicator.renderOne(ctx, m);
     }
 
     /**
@@ -1971,227 +1463,18 @@ export class ArenaScene extends BaseGameScene {
     }
 
     /**
-     * 退出场景
-     */
-    /**
-     * 创建技能粒子效果
-     * @param {string} skillName - 技能名称
-     * @param {Object} params - 参数 {casterX, casterY, targetX, targetY, areaSize}
+     * 创建技能粒子效果（委托 SkillParticleEffects）
      */
     createSkillParticles(skillName, params) {
-            if (!this.particleSystem) return;
-            const { casterX, casterY, targetX, targetY, areaSize } = params;
-
-            switch (skillName) {
-                case '猛击': {
-                    // 血色粒子效果 - 模拟血溅射（多层次血色）
-                    // 第一层：大颗血滴飞溅
-                    this.particleSystem.emitBurst({
-                        position: { x: targetX, y: targetY },
-                        velocity: { x: 0, y: 0 },
-                        life: 600,
-                        size: 6,
-                        color: '#cc0000',
-                        alpha: 0.95,
-                        gravity: 80,
-                        friction: 0.90
-                    }, 15, {
-                        velocityRange: { min: 60, max: 150 },
-                        angleRange: { min: 0, max: Math.PI * 2 },
-                        sizeRange: { min: 4, max: 8 },
-                        lifeRange: { min: 400, max: 700 }
-                    });
-                    // 第二层：细小血雾扩散
-                    this.particleSystem.emitBurst({
-                        position: { x: targetX, y: targetY },
-                        velocity: { x: 0, y: 0 },
-                        life: 400,
-                        size: 3,
-                        color: '#880000',
-                        alpha: 0.7,
-                        gravity: 20,
-                        friction: 0.95
-                    }, 12, {
-                        velocityRange: { min: 20, max: 80 },
-                        angleRange: { min: 0, max: Math.PI * 2 },
-                        sizeRange: { min: 2, max: 5 },
-                        lifeRange: { min: 300, max: 500 }
-                    });
-                    // 第三层：明亮血色闪光（斧头劈砍的火花）
-                    this.particleSystem.emitBurst({
-                        position: { x: targetX, y: targetY },
-                        velocity: { x: 0, y: 0 },
-                        life: 250,
-                        size: 4,
-                        color: '#ff3333',
-                        alpha: 1.0,
-                        gravity: 0,
-                        friction: 0.85
-                    }, 8, {
-                        velocityRange: { min: 80, max: 180 },
-                        angleRange: { min: 0, max: Math.PI * 2 },
-                        sizeRange: { min: 2, max: 5 },
-                        lifeRange: { min: 150, max: 300 }
-                    });
-                    break;
-                }
-                case '旋风斩': {
-                    // 旋风粒子效果 - 多层旋转风刃
-                    const radius = areaSize || 80;
-                    this._emitWhirlwindParticles(casterX, casterY, radius);
-                    // 如果是自己施法，设置持续5秒旋风状态（每秒触发一次粒子）
-                    if (data.caster_id === this.selfId) {
-                        const now = Date.now();
-                        this._whirlwindUntil = now + 5000;
-                        this._whirlwindAreaSize = radius;
-                        this._whirlwindNextParticle = now + 1000;
-                    }
-                    break;
-                }
-                case '战吼': {
-                    // 恐惧冲击波粒子 - 从施法者向外扩散的红色恐惧波
-                    // 第一层：红色冲击波环
-                    this.particleSystem.emitBurst({
-                        position: { x: casterX, y: casterY },
-                        velocity: { x: 0, y: 0 },
-                        life: 700,
-                        size: 6,
-                        color: '#ff4444',
-                        alpha: 0.9,
-                        gravity: 0,
-                        friction: 0.94
-                    }, 25, {
-                        velocityRange: { min: 80, max: 160 },
-                        angleRange: { min: 0, max: Math.PI * 2 },
-                        sizeRange: { min: 4, max: 8 },
-                        lifeRange: { min: 500, max: 800 }
-                    });
-                    // 第二层：暗红色恐惧气息
-                    this.particleSystem.emitBurst({
-                        position: { x: casterX, y: casterY },
-                        velocity: { x: 0, y: 0 },
-                        life: 500,
-                        size: 4,
-                        color: '#880022',
-                        alpha: 0.7,
-                        gravity: -15,
-                        friction: 0.92
-                    }, 15, {
-                        velocityRange: { min: 40, max: 100 },
-                        angleRange: { min: 0, max: Math.PI * 2 },
-                        sizeRange: { min: 3, max: 6 },
-                        lifeRange: { min: 400, max: 600 }
-                    });
-                    break;
-                }
-                case '多重射击': {
-                    // 5支箭射向目标区域
-                    for (let i = 0; i < 5; i++) {
-                        const offsetX = (Math.random() - 0.5) * (areaSize || 10) * 2;
-                        const offsetY = (Math.random() - 0.5) * (areaSize || 10) * 2;
-                        const dx = (targetX + offsetX) - casterX;
-                        const dy = (targetY + offsetY) - casterY;
-                        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-                        const speed = 200;
-                        // 每支箭3个粒子形成轨迹
-                        for (let j = 0; j < 3; j++) {
-                            this.particleSystem.emit({
-                                position: { x: casterX, y: casterY },
-                                velocity: { x: (dx / dist) * speed * (0.9 + j * 0.05), y: (dy / dist) * speed * (0.9 + j * 0.05) },
-                                life: 400,
-                                size: 3 - j * 0.5,
-                                color: '#ffee44',
-                                alpha: 0.9,
-                                gravity: 0,
-                                friction: 0.98
-                            });
-                        }
-                    }
-                    break;
-                }
-                case '闪电箭': {
-                    // 雷电粒子效果 - 电弧 + 闪光
-                    const dx = targetX - casterX;
-                    const dy = targetY - casterY;
-                    // 主电弧
-                    for (let i = 0; i < 10; i++) {
-                        const t = i / 10;
-                        const px = casterX + dx * t + (Math.random() - 0.5) * 20;
-                        const py = casterY + dy * t + (Math.random() - 0.5) * 20;
-                        this.particleSystem.emit({
-                            position: { x: px, y: py },
-                            velocity: { x: (Math.random() - 0.5) * 60, y: (Math.random() - 0.5) * 60 },
-                            life: 300 + Math.random() * 200,
-                            size: 3 + Math.random() * 4,
-                            color: '#44aaff',
-                            alpha: 0.95,
-                            gravity: 0,
-                            friction: 0.9
-                        });
-                    }
-                    // 目标点闪光爆炸
-                    this.particleSystem.emitBurst({
-                        position: { x: targetX, y: targetY },
-                        velocity: { x: 0, y: 0 },
-                        life: 350,
-                        size: 4,
-                        color: '#ffffff',
-                        alpha: 1.0,
-                        gravity: 0,
-                        friction: 0.88
-                    }, 18, {
-                        velocityRange: { min: 40, max: 80 },
-                        angleRange: { min: 0, max: Math.PI * 2 },
-                        sizeRange: { min: 2, max: 6 },
-                        lifeRange: { min: 250, max: 400 }
-                    });
-                    break;
-                }
-                case '天降箭雨': {
-                    // 箭雨粒子 - 从天空落下到目标区域
-                    const rainRadius = areaSize || 30;
-                    for (let i = 0; i < 20; i++) {
-                        const offsetX = (Math.random() - 0.5) * rainRadius * 2;
-                        const offsetY = (Math.random() - 0.5) * rainRadius * 2;
-                        const delay = Math.random() * 500;
-                        setTimeout(() => {
-                            if (!this.particleSystem) return;
-                            // 下落的箭
-                            this.particleSystem.emit({
-                                position: { x: targetX + offsetX, y: targetY + offsetY - 100 },
-                                velocity: { x: (Math.random() - 0.5) * 10, y: 150 + Math.random() * 50 },
-                                life: 500,
-                                size: 2 + Math.random() * 2,
-                                color: '#ffcc33',
-                                alpha: 0.9,
-                                gravity: 80,
-                                friction: 0.98
-                            });
-                        }, delay);
-                    }
-                    // 落地溅射效果
-                    setTimeout(() => {
-                        if (!this.particleSystem) return;
-                        this.particleSystem.emitBurst({
-                            position: { x: targetX, y: targetY },
-                            velocity: { x: 0, y: 0 },
-                            life: 300,
-                            size: 3,
-                            color: '#ff8833',
-                            alpha: 0.7,
-                            gravity: 40,
-                            friction: 0.9
-                        }, 15, {
-                            velocityRange: { min: 20, max: 50 },
-                            angleRange: { min: 0, max: Math.PI * 2 },
-                            sizeRange: { min: 2, max: 4 },
-                            lifeRange: { min: 200, max: 400 }
-                        });
-                    }, 400);
-                    break;
-                }
-            }
+        SkillParticleEffects.emit(this.particleSystem, skillName, params);
+        // 旋风斩：额外设置持续状态
+        if (skillName === '旋风斩' && params.isSelf) {
+            const now = Date.now();
+            this._whirlwindUntil = now + 5000;
+            this._whirlwindAreaSize = params.areaSize || 80;
+            this._whirlwindNextParticle = now + 1000;
         }
+    }
 
 
     /**
@@ -2237,168 +1520,19 @@ export class ArenaScene extends BaseGameScene {
         }
     }
 
-    /**
-     * 拾取地面掉落物品（玩家靠近时自动拾取）
-     */
+    /** 拾取地面掉落物品（委托 PickupSystem） */
     _pickupGroundDrop(drop) {
-        if (!this.playerEntity || this.playerEntity.dead) return;
-        drop.picked = true;
-        const transform = this.playerEntity.getComponent('transform');
-        const inventory = this.playerEntity.getComponent('inventory');
-
-        if (drop.dropType === 'health_potion') {
-            // 红瓶加入背包
-            if (inventory) {
-                inventory.addItem({
-                    id: 'health_potion', name: '红瓶', type: 'consumable', subType: 'health_potion',
-                    maxStack: 20, usable: true, rarity: 0,
-                    effect: { type: 'heal', value: 50 },
-                    stats: {}
-                }, 1);
-            }
-            if (this.floatingTextManager && transform) {
-                this.floatingTextManager.addText(transform.position.x, transform.position.y - 20, '+1 红瓶', '#ff4444');
-            }
-        } else if (drop.dropType === 'mana_potion') {
-            // 蓝瓶加入背包
-            if (inventory) {
-                inventory.addItem({
-                    id: 'mana_potion', name: '蓝瓶', type: 'consumable', subType: 'mana_potion',
-                    maxStack: 20, usable: true, rarity: 0,
-                    effect: { type: 'restore_mana', value: 30 },
-                    stats: {}
-                }, 1);
-            }
-            if (this.floatingTextManager && transform) {
-                this.floatingTextManager.addText(transform.position.x, transform.position.y - 20, '+1 蓝瓶', '#4488ff');
-            }
-        } else if (drop.dropType === 'wood_arrow' || drop.dropType === 'iron_arrow') {
-            const equipment = this.playerEntity.getComponent('equipment');
-            if (equipment) {
-                const offhand = equipment.getEquipment('offhand');
-                const count = drop.dropCount || 1;
-                const isIron = drop.dropType === 'iron_arrow';
-                const arrowName = isIron ? '铁箭' : '木箭';
-                const arrowId = isIron ? 'iron_arrow' : 'wooden_arrow';
-                if (offhand && offhand.subType === 'ammo') {
-                    offhand.quantity = (offhand.quantity || 0) + count;
-                } else {
-                    equipment.equip('offhand', {
-                        id: arrowId, name: arrowName, type: 'ammo', subType: 'ammo',
-                        rarity: 0, level: 1, quantity: count,
-                        stats: { attack: 0, defense: 0, maxHp: 0, speed: 0 }
-                    });
-                }
-                if (this.floatingTextManager && transform) {
-                    this.floatingTextManager.addText(transform.position.x, transform.position.y - 20, `+${count} ${arrowName}`, '#88ccff');
-                }
-            }
-        }
+        PickupSystem.pickup(this.playerEntity, drop, this.floatingTextManager);
     }
 
-    /**
-     * 渲染地面掉落物品
-     */
+    /** 渲染地面掉落物品（委托 GroundDropRenderer） */
     _renderGroundDrop(ctx, drop) {
-        const x = drop.x;
-        const y = drop.y;
-
-        // 淡出：最后3秒渐隐
-        const alpha = drop.life < 3 ? drop.life / 3 : 1;
-        ctx.save();
-        ctx.globalAlpha = alpha;
-
-        // 物品光圈（地面椭圆光晕）
-        const colorMap = { health_potion: 'rgba(255,60,60,', mana_potion: 'rgba(60,100,255,', iron_arrow: 'rgba(140,200,220,' };
-        const baseColor = colorMap[drop.dropType] || 'rgba(255,255,100,';
-        const pulse = 0.6 + 0.4 * Math.sin(performance.now() / 300);
-
-        ctx.beginPath();
-        ctx.ellipse(x, y, 12, 6, 0, 0, Math.PI * 2);
-        ctx.fillStyle = baseColor + (0.3 * pulse) + ')';
-        ctx.fill();
-
-        // 物品图标
-        if (drop.dropType === 'health_potion') {
-            // 红瓶
-            ctx.fillStyle = '#cc2222';
-            ctx.fillRect(x - 4, y - 14, 8, 12);
-            ctx.fillStyle = '#ff4444';
-            ctx.fillRect(x - 3, y - 13, 6, 10);
-            ctx.fillStyle = '#884400';
-            ctx.fillRect(x - 2, y - 16, 4, 3);
-            // 十字
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(x - 1, y - 11, 2, 6);
-            ctx.fillRect(x - 3, y - 9, 6, 2);
-        } else if (drop.dropType === 'mana_potion') {
-            // 蓝瓶
-            ctx.fillStyle = '#2244cc';
-            ctx.fillRect(x - 4, y - 14, 8, 12);
-            ctx.fillStyle = '#4488ff';
-            ctx.fillRect(x - 3, y - 13, 6, 10);
-            ctx.fillStyle = '#884400';
-            ctx.fillRect(x - 2, y - 16, 4, 3);
-            // 星号
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(x - 1, y - 11, 2, 6);
-            ctx.fillRect(x - 3, y - 9, 6, 2);
-        } else if (drop.dropType === 'iron_arrow') {
-            // 铁箭
-            ctx.strokeStyle = '#aabbcc';
-            ctx.lineWidth = 1.5;
-            ctx.beginPath();
-            ctx.moveTo(x, y - 16);
-            ctx.lineTo(x, y - 2);
-            ctx.stroke();
-            // 箭头
-            ctx.fillStyle = '#ccddee';
-            ctx.beginPath();
-            ctx.moveTo(x, y - 18);
-            ctx.lineTo(x - 3, y - 14);
-            ctx.lineTo(x + 3, y - 14);
-            ctx.closePath();
-            ctx.fill();
-        }
-
-        // 物品名称
-        ctx.font = '9px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillStyle = '#ffffff';
-        ctx.strokeStyle = 'rgba(0,0,0,0.7)';
-        ctx.lineWidth = 2;
-        ctx.strokeText(drop.dropName, x, y + 10);
-        ctx.fillText(drop.dropName, x, y + 10);
-
-        ctx.restore();
+        GroundDropRenderer.render(ctx, drop);
     }
 
-    /**
-     * 复活时银白色粒子光环效果
-     */
+    /** 复活粒子光环（委托 SkillParticleEffects） */
     _spawnRespawnParticles(x, y) {
-        if (!this.particleSystem) return;
-        const colors = ['#e0e8ff', '#ffffff', '#c0d0ff', '#a0c0ff'];
-        const count = 8;
-        for (let i = 0; i < count; i++) {
-            const angle = (Math.PI * 2 * i) / count;
-            const speed = 60 + Math.random() * 40;
-            this.particleSystem.createEmitter({
-                position: { x, y },
-                rate: 12,
-                duration: 800,
-                particleConfig: {
-                    position: { x, y },
-                    velocity: { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed * 0.5 },
-                    life: 600,
-                    size: 3 + Math.random() * 2,
-                    color: colors[i % colors.length],
-                    alpha: 0.9,
-                    gravity: 0,
-                    friction: 0.92
-                }
-            });
-        }
+        SkillParticleEffects.emitRespawn(this.particleSystem, x, y);
     }
 
 
@@ -2441,8 +1575,7 @@ export class ArenaScene extends BaseGameScene {
     }
 
     exit() {
-        this.remotePlayers.clear();
-        this.npcEntities.clear();
+        this.multiplayerManager.clear();
         this.selectedTarget = null;
         this.skillRangeIndicators = [];
         this.boneCorpses = [];

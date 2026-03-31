@@ -7,6 +7,8 @@ import (
 	"math"
 	"math/rand"
 	"time"
+
+	"gogame/internal/combat"
 )
 
 // SkillInfo 技能运行时信息
@@ -23,55 +25,26 @@ type SkillInfo struct {
 }
 
 func distance(x1, y1, x2, y2 float64) float64 {
-	dx := x1 - x2
-	dy := y1 - y2
-	return math.Sqrt(dx*dx + dy*dy)
+	return combat.Distance(x1, y1, x2, y2)
 }
 
-// isInEllipseRange 2.5D 椭圆范围判定（rx = range, ry = range/2）
+// isInEllipseRange 2.5D 椭圆范围判定（委托引擎层）
 func isInEllipseRange(cx, cy, tx, ty, radius float64) bool {
-	dx := tx - cx
-	dy := ty - cy
-	rx := radius
-	ry := radius / 2
-	return (dx*dx)/(rx*rx)+(dy*dy)/(ry*ry) <= 1
+	return combat.IsInEllipseRange(cx, cy, tx, ty, radius)
 }
 
-// isInFanRange 扇形范围判定（2.5D：Y 轴还原 ×2 后计算角度）
-// dir 为攻击方向角（弧度），halfAngle 为半角
+// isInFanRange 扇形范围判定（委托引擎层）
 func isInFanRange(cx, cy, tx, ty, radius, dir, halfAngle float64) bool {
-	dx := tx - cx
-	dy := (ty - cy) * 2 // 还原 2.5D Y 轴压缩
-	dist := math.Sqrt(dx*dx + dy*dy)
-	if dist > radius {
-		return false
-	}
-	angle := math.Atan2(dy, dx)
-	diff := angle - dir
-	for diff > math.Pi {
-		diff -= math.Pi * 2
-	}
-	for diff < -math.Pi {
-		diff += math.Pi * 2
-	}
-	return math.Abs(diff) <= halfAngle
+	return combat.IsInFanRange(cx, cy, tx, ty, radius, dir, halfAngle)
 }
 
 // isInSafeZone 判断坐标是否在篝火安全区内（2.5D 椭圆）
 func isInSafeZone(x, y float64) bool {
-	dx := x - CampfireX
-	dy := y - CampfireY
-	rx := float64(CampfireRadius)
-	ry := float64(CampfireRadius) / 2 // 2.5D：垂直半径 = 水平半径 / 2
-	return (dx*dx)/(rx*rx)+(dy*dy)/(ry*ry) <= 1
+	return combat.IsInEllipseRange(CampfireX, CampfireY, x, y, CampfireRadius)
 }
 
 func calcDamage(atk, def float64) float64 {
-	base := atk - def*0.5
-	if base < 1 {
-		base = 1
-	}
-	return base * (0.85 + rand.Float64()*0.3)
+	return combat.CalcDamage(atk, def)
 }
 
 func (s *DemoServer) makePlayerState(p *PlayerSession) map[string]interface{} {
