@@ -9,6 +9,8 @@
  *        scene.floatingTextManager, scene.camera, scene.inputManager,
  *        scene.skills, scene.skillCooldowns, scene.particleSystem
  */
+import { SkillParticleEffects } from '../rendering/SkillParticleEffects.js';
+
 export class NetworkCombatSystem {
     /**
      * @param {object} scene - 持有该系统的场景实例
@@ -438,6 +440,19 @@ export class NetworkCombatSystem {
 
                 scene.floatingTextManager.addText(transform.position.x, transform.position.y - 20, text, color);
             }
+
+            // 旋风斩：命中时同步触发粒子，并重置定时器（同一tick多目标只触发一次）
+            if (data.skill_name === '旋风斩' && data.attacker_id === scene.selfId) {
+                const now = Date.now();
+                if (!scene._whirlwindLastParticleTime || now - scene._whirlwindLastParticleTime > 500) {
+                    scene._whirlwindLastParticleTime = now;
+                    scene._whirlwindNextParticle = now + 1000; // 重置定时器，避免1秒内重复
+                    const t = scene.playerEntity?.getComponent('transform');
+                    if (t) {
+                        SkillParticleEffects.emitWhirlwind(scene.particleSystem, t.position.x, t.position.y, scene._whirlwindAreaSize || 80);
+                    }
+                }
+            }
         }
     }
 
@@ -484,7 +499,8 @@ export class NetworkCombatSystem {
                     casterY: transform.position.y,
                     targetX: data.target_x,
                     targetY: data.target_y,
-                    areaSize: data.area_size || 0
+                    areaSize: data.area_size || 0,
+                    isSelf: data.caster_id === scene.selfId
                 });
             }
 
@@ -520,7 +536,7 @@ export class NetworkCombatSystem {
                             rx: radius, ry: radius / 2,
                             color: isWarcry ? 'rgba(255, 60, 60, 0.85)' : 'rgba(100, 200, 255, 0.85)',
                             fillColor: isWarcry ? 'rgba(255, 60, 60, 0.12)' : 'rgba(100, 200, 255, 0.10)',
-                            duration: 1.0
+                            duration: isWarcry ? 1.0 : 5.0
                         });
                     } else if (areaType === 'circle') {
                         // 弓箭手技能：以鼠标点击位置为中心，武器攻击距离 1/2 为半径的椭圆

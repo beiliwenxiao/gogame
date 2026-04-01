@@ -91,12 +91,12 @@ func (s *Store) SeedDefaultEquipment() error {
 	skills := []SkillDef{
 		// 战士技能
 		{Name: "普通攻击", Class: "warrior", Damage: 1.0, MPCost: 0, Cooldown: 0.8, Range: 50, AreaType: "single"},
-		// 猛击：200% 伤害，扇形范围与普攻一致（由后端动态读取武器范围）
-		{Name: "猛击", Class: "warrior", Damage: 2.0, MPCost: 15, Cooldown: 3.0, Range: 0, AreaType: "fan"},
-		// 旋风斩：80% 伤害/秒，持续5秒每秒1次，冷却15秒，以玩家为中心的椭圆范围（武器距离），后端动态设置 AreaSize
-		{Name: "旋风斩", Class: "warrior", Damage: 0.8, MPCost: 25, Cooldown: 15.0, Range: 0, AreaType: "ellipse", AreaSize: 0},
+		// 猛击：300% 伤害，扇形范围与普攻一致（由后端动态读取武器范围）
+		{Name: "猛击", Class: "warrior", Damage: 3.0, MPCost: 15, Cooldown: 6.0, Range: 0, AreaType: "fan"},
+		// 旋风斩：150% 伤害/秒，持续5秒每秒1次，冷却15秒，以玩家为中心的椭圆范围（武器距离），后端动态设置 AreaSize
+		{Name: "旋风斩", Class: "warrior", Damage: 1.5, MPCost: 25, Cooldown: 15.0, Range: 0, AreaType: "ellipse", AreaSize: 0},
 		// 战吼：30% 伤害 + 恐惧逃跑3秒，椭圆范围 = 武器距离×3，后端动态设置 AreaSize
-		{Name: "战吼", Class: "warrior", Damage: 0.3, MPCost: 20, Cooldown: 10.0, Range: 0, AreaType: "ellipse", AreaSize: 0},
+		{Name: "战吼", Class: "warrior", Damage: 0.3, MPCost: 20, Cooldown: 20.0, Range: 0, AreaType: "ellipse", AreaSize: 0},
 		// 弓箭手技能
 		{Name: "射击", Class: "archer", Damage: 1.0, MPCost: 0, Cooldown: 0.6, Range: 200, AreaType: "single"},
 		{Name: "多重射击", Class: "archer", Damage: 0.8, MPCost: 20, Cooldown: 4.0, Range: 180, AreaType: "circle", AreaSize: 10},

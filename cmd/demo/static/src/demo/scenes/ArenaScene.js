@@ -340,13 +340,14 @@ export class ArenaScene extends BaseGameScene {
         // 更新昏迷/恐惧转圈旋转角
         this.stunEffectRenderer.update(deltaTime);
 
-        // 旋风斩持续粒子（每秒触发一次，与后端伤害 tick 同步）
+        // 旋风斩持续粒子（每秒触发一次；命中时由 onDamage 额外触发，共享防重复标志）
         if (this._whirlwindUntil > 0 && this.playerEntity && !this.playerEntity.dead) {
             const now = Date.now();
             if (now >= this._whirlwindUntil) {
                 this._whirlwindUntil = 0;
             } else if (now >= this._whirlwindNextParticle) {
                 this._whirlwindNextParticle = now + 1000;
+                this._whirlwindLastParticleTime = now;
                 const t = this.playerEntity.getComponent('transform');
                 if (t) {
                     SkillParticleEffects.emitWhirlwind(this.particleSystem, t.position.x, t.position.y, this._whirlwindAreaSize);
@@ -1262,7 +1263,7 @@ export class ArenaScene extends BaseGameScene {
             const now = Date.now();
             this._whirlwindUntil = now + 5000;
             this._whirlwindAreaSize = params.areaSize || 80;
-            this._whirlwindNextParticle = now + 1000;
+            this._whirlwindNextParticle = now + 600;
         }
     }
 
