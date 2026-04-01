@@ -330,7 +330,6 @@ export class MultiplayerManager {
         this.remotePlayers.clear();
         this.npcEntities.clear();
     }
-}
 
     // ─────────────────────────────────────────────
     // 增量状态同步
@@ -410,3 +409,4 @@ export class MultiplayerManager {
             }
         }
     }
+}

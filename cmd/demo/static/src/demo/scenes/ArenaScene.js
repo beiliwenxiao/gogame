@@ -15,7 +15,7 @@ import { StunEffectRenderer } from '../../rendering/StunEffectRenderer.js';
 import { GroundDropRenderer } from '../../rendering/GroundDropRenderer.js';
 import { BoneCorpseRenderer } from '../../rendering/BoneCorpseRenderer.js';
 import { MoveTargetIndicator } from '../../rendering/MoveTargetIndicator.js';
-import { PickupSystem } from '../../systems/PickupSystem.js';
+import { GroundDropPickupSystem } from '../../systems/GroundDropPickupSystem.js';
 import { EquipmentSyncSystem } from '../../systems/EquipmentSyncSystem.js';
 import { SkillSyncSystem } from '../../systems/SkillSyncSystem.js';
 
@@ -93,7 +93,7 @@ export class ArenaScene extends BaseGameScene {
         this.boneCorpses = [];
 
         // 右键移动目标指示器 [{x, y, life, maxLife}]
-        this.moveTargetIndicators = [];
+        // （已由 moveTargetIndicator 管理，此处保留空数组兼容旧引用）
 
         // 地面掉落物品 [{x, y, life, maxLife, dropType, dropName, dropCount, killerId}]
         this.groundDrops = [];
@@ -109,13 +109,10 @@ export class ArenaScene extends BaseGameScene {
         this.remotePlayers = this.multiplayerManager.remotePlayers;
         this.npcEntities = this.multiplayerManager.npcEntities;
 
-        // 昏迷/恐惧转圈效果：旋转角度（弧度），每帧递增
-        this._stunRotation = 0;
-
         // 旋风斩持续状态
-        this._whirlwindUntil = 0;       // 持续结束时间（ms）
-        this._whirlwindAreaSize = 0;    // 旋风范围
-        this._whirlwindNextParticle = 0; // 下次触发粒子的时间（ms）
+        this._whirlwindUntil = 0;
+        this._whirlwindAreaSize = 0;
+        this._whirlwindNextParticle = 0;
     }
 
     /**
@@ -389,7 +386,7 @@ export class ArenaScene extends BaseGameScene {
                         }
                     }
                     if (nearest) {
-                        PickupSystem.pickup(this.playerEntity, nearest, this.floatingTextManager);
+                        GroundDropPickupSystem.pickup(this.playerEntity, nearest, this.floatingTextManager);
                         if (leftClicked) this.inputManager.markMouseClickHandled();
                     }
                 }
@@ -1039,70 +1036,15 @@ export class ArenaScene extends BaseGameScene {
     }
 
     /**
-     * 渲染昏迷/恐惧转圈星星效果（头顶绕圈）
-     * 遍历所有实体，检查 stunEffectUntil，有效期内绘制
+     * 渲染昏迷/恐惧转圈效果（委托 StunEffectRenderer）
      */
     _renderStunEffects(ctx) {
-        const now = Date.now();
         const allEntities = [
             ...(this.playerEntity ? [this.playerEntity] : []),
             ...Array.from(this.remotePlayers.values()),
             ...Array.from(this.npcEntities.values())
         ];
-
-        for (const entity of allEntities) {
-            if (!entity.stunEffectUntil || now >= entity.stunEffectUntil) continue;
-            if (entity.dead) continue;
-
-            const transform = entity.getComponent('transform');
-            if (!transform) continue;
-            const sprite = entity.getComponent('sprite');
-            const h = sprite?.height || 64;
-
-            // 头顶位置（精灵顶部再往上一点）
-            const cx = transform.position.x;
-            const cy = transform.position.y - h - 8;
-
-            // 剩余时间比例，最后0.5秒淡出
-            const remaining = (entity.stunEffectUntil - now) / 1000;
-            const alpha = remaining < 0.5 ? remaining / 0.5 : 1;
-
-            // 3颗星绕圈，间隔120°
-            const orbitRx = 14; // 椭圆水平半径
-            const orbitRy = 7;  // 椭圆垂直半径（2.5D压缩）
-            const starCount = 3;
-
-            ctx.save();
-            ctx.globalAlpha = alpha;
-
-            for (let i = 0; i < starCount; i++) {
-                const angle = this._stunRotation + (i / starCount) * Math.PI * 2;
-                const sx = cx + Math.cos(angle) * orbitRx;
-                const sy = cy + Math.sin(angle) * orbitRy;
-
-                // 绘制五角星
-                ctx.save();
-                ctx.translate(sx, sy);
-                ctx.rotate(angle * 1.5); // 自转
-                ctx.fillStyle = '#ffe066';
-                ctx.strokeStyle = '#ff9900';
-                ctx.lineWidth = 0.8;
-                ctx.beginPath();
-                const r1 = 4, r2 = 2, pts = 5;
-                for (let p = 0; p < pts * 2; p++) {
-                    const r = p % 2 === 0 ? r1 : r2;
-                    const a = (p / (pts * 2)) * Math.PI * 2 - Math.PI / 2;
-                    if (p === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
-                    else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
-                }
-                ctx.closePath();
-                ctx.fill();
-                ctx.stroke();
-                ctx.restore();
-            }
-
-            ctx.restore();
-        }
+        this.stunEffectRenderer.render(ctx, allEntities);
     }
 
     /**
@@ -1296,170 +1238,18 @@ export class ArenaScene extends BaseGameScene {
     /**
      * 将后端技能注入到 playerEntity 的 combat 组件
      */
+    /**
+     * 将后端技能注入到 playerEntity 的 combat 组件（委托 SkillSyncSystem）
+     */
     injectBackendSkills() {
-        if (!this.playerEntity || !this.skills || this.skills.length === 0) return;
-        
-        let combat = this.playerEntity.getComponent('combat');
-        if (!combat) return;
-        
-        // 清空现有技能
-        combat.skills = [];
-        combat.skillCooldowns = new Map();
-        
-        // 后端技能映射到 combat 组件（跳过普通攻击，只取技能）
-        const backendSkills = this.skills.filter(s => s.mp_cost > 0);
-        
-        // 技能图标映射
-        const skillIconMap = {
-            '猛击': '🪓',
-            '旋风斩': '🌀',
-            '战吼': '�',
-            '射击': '🏹',
-            '多重射击': '🎯',
-            '闪电箭': '⚡',
-            '天降箭雨': '🌧️'
-        };
-        
-        // 技能图标光晕映射（血色斧头等特殊效果）
-        const skillGlowMap = {
-            '猛击': 'rgba(180, 0, 0, 0.4)',
-            '战吼': 'rgba(180, 0, 30, 0.35)',
-        };
-        
-        backendSkills.forEach(sk => {
-            combat.addSkill({
-                id: `backend_${sk.id}`,
-                backendId: sk.id,
-                name: sk.name,
-                cooldown: sk.cooldown,
-                manaCost: sk.mp_cost,
-                effectType: sk.name, // 用名字做 effectType
-                castTime: 0,
-                icon: skillIconMap[sk.name] || '⚡',
-                iconGlow: skillGlowMap[sk.name] || null
-            });
-        });
-        
-        console.log('ArenaScene: 注入后端技能', backendSkills.map(s => s.name));
+        SkillSyncSystem.loadFromBackend(this.playerEntity, this.skills);
     }
 
     /**
-     * 将后端装备数据转换为前端格式并装备到 EquipmentComponent
-     * 后端格式: { id, slot_type, def: { id, name, slot_type, class, quality, level, attack, defense, hp, speed, crit_rate } }
-     * 前端格式: { id, name, type, subType, rarity, stats: { attack, defense, maxHp, speed }, attackSpeed, attackRange, attackDistance }
-     * @param {Array} backendEquips - 后端装备数据数组
+     * 将后端装备数据加载到前端 EquipmentComponent（委托 EquipmentSyncSystem）
      */
     loadBackendEquipments(backendEquips) {
-        if (!this.playerEntity || !backendEquips || backendEquips.length === 0) return;
-        
-        const equipment = this.playerEntity.getComponent('equipment');
-        if (!equipment) return;
-        
-        // 后端 slot_type -> 前端 slot 映射
-        const SLOT_MAP = {
-            'weapon': 'mainhand',
-            'helmet': 'helmet',
-            'armor': 'armor',
-            'boots': 'boots',
-            'ammo': 'offhand'
-        };
-        
-        // 后端 quality -> 前端 rarity 数值映射
-        const QUALITY_MAP = {
-            'normal': 0,
-            'rare': 2,
-            'epic': 3,
-            'legendary': 4
-        };
-        
-        // 职业默认武器属性（参考 EquipmentData.json）
-        const charClass = this.playerEntity.class || 'warrior';
-        const WEAPON_PROPS = {
-            'warrior': { attackSpeed: 2.0, attackRange: 90, attackDistance: 100 },
-            'archer': { attackSpeed: 3.0, attackRange: 30, attackDistance: 250 }  // attackRange=角度（度数）
-        };
-        
-        // 先合并弹药数量（多捆合并为一个 offhand 条目，剩余放背包）
-        let totalAmmoQuantity = 0;
-        let ammoItem = null;
-        for (const eq of backendEquips) {
-            if (eq.slot_type === 'ammo') {
-                totalAmmoQuantity += (eq.quantity || 1);
-                if (!ammoItem) {
-                    ammoItem = {
-                        id: eq.def.icon_id || eq.def.id,
-                        name: eq.def.name,
-                        type: 'ammo',
-                        subType: 'ammo',
-                        maxStack: 99,
-                        rarity: QUALITY_MAP[eq.def.quality] !== undefined ? QUALITY_MAP[eq.def.quality] : 0,
-                        level: eq.def.level,
-                        stats: { attack: eq.def.attack || 0, defense: 0, maxHp: 0, speed: 0 }
-                    };
-                }
-            }
-        }
-        if (ammoItem) {
-            // 装备1组（最多99支）到副手槽
-            const equipQuantity = Math.min(totalAmmoQuantity, 99);
-            const equippedAmmo = { ...ammoItem, quantity: equipQuantity };
-            equipment.equip('offhand', equippedAmmo);
-            
-            // 剩余放入背包（每组99支）
-            const remaining = totalAmmoQuantity - equipQuantity;
-            if (remaining > 0) {
-                const inventory = this.playerEntity.getComponent('inventory');
-                if (inventory) {
-                    const backpackItem = { ...ammoItem };
-                    inventory.addItem(backpackItem, remaining);
-                }
-            }
-        }
-
-        for (const eq of backendEquips) {
-            const def = eq.def;
-            if (!def) continue;
-            if (eq.slot_type === 'ammo') continue; // 已单独处理
-            
-            const frontendSlot = SLOT_MAP[eq.slot_type];
-            if (!frontendSlot) continue;
-            
-            // 构建前端装备对象
-            const item = {
-                id: def.icon_id || def.id,
-                name: def.name,
-                type: eq.slot_type,
-                subType: frontendSlot,
-                rarity: QUALITY_MAP[def.quality] !== undefined ? QUALITY_MAP[def.quality] : 0,
-                level: def.level,
-                stats: {
-                    attack: def.attack || 0,
-                    defense: def.defense || 0,
-                    maxHp: def.hp || 0,
-                    speed: def.speed || 0
-                }
-            };
-            
-            // 武器添加攻击属性（参考 EquipmentData.json 的 attackSpeed/attackRange/attackDistance）
-            if (eq.slot_type === 'weapon') {
-                const weaponProps = WEAPON_PROPS[charClass] || WEAPON_PROPS['warrior'];
-                // 优先使用后端传来的武器属性，否则用职业默认值
-                item.attackSpeed = eq.def.attack_interval || weaponProps.attackSpeed;
-                item.attackRange = eq.def.attack_range || weaponProps.attackRange;
-                item.attackDistance = eq.def.attack_distance || weaponProps.attackDistance;
-                item.pierce = eq.def.pierce || 0;
-                item.multiArrow = eq.def.multi_arrow || 0;
-                // 弓箭类武器标记为远程，subType 设为 'bow' 让 checkIsRangedWeapon 能识别
-                if (charClass === 'archer' || eq.def.pierce > 0 || eq.def.multi_arrow > 0) {
-                    item.ranged = true;
-                    item.subType = 'bow';
-                }
-            }
-            
-            equipment.equip(frontendSlot, item);
-        }
-        
-        console.log('ArenaScene: 加载后端装备完成', backendEquips.map(e => e.def?.name));
+        EquipmentSyncSystem.loadFromBackend(this.playerEntity, backendEquips);
     }
 
     /**
@@ -1479,13 +1269,10 @@ export class ArenaScene extends BaseGameScene {
 
     /**
      * 处理 NPC 掉落物品
-     * @param {Object} data - {npc_id, x, y, drop_type, drop_name, killer_id}
      */
     onNPCDrop(data) {
         if (!data) return;
-        console.log('[NPC Drop]', JSON.stringify(data));
 
-        // 在地面生成掉落物品（所有玩家都能看到，15秒后消失）
         this.groundDrops.push({
             x: data.x + (Math.random() - 0.5) * 30,
             y: data.y + (Math.random() - 0.5) * 15,
@@ -1498,31 +1285,12 @@ export class ArenaScene extends BaseGameScene {
             picked: false
         });
 
-        // 掉落粒子效果
-        if (this.particleSystem) {
-            const pColorMap = { health_potion: '#ff3333', mana_potion: '#3388ff', iron_arrow: '#88aacc' };
-            const color = pColorMap[data.drop_type] || '#3388ff';
-            this.particleSystem.emitBurst({
-                position: { x: data.x, y: data.y },
-                velocity: { x: 0, y: -20 },
-                life: 500,
-                size: 4,
-                color: color,
-                alpha: 0.9,
-                gravity: 20,
-                friction: 0.92
-            }, 10, {
-                velocityRange: { min: 20, max: 50 },
-                angleRange: { min: 0, max: Math.PI * 2 },
-                sizeRange: { min: 3, max: 5 },
-                lifeRange: { min: 400, max: 600 }
-            });
-        }
+        SkillParticleEffects.emitDropAppear(this.particleSystem, data.x, data.y, data.drop_type);
     }
 
-    /** 拾取地面掉落物品（委托 PickupSystem） */
+    /** 拾取地面掉落物品（委托 GroundDropPickupSystem） */
     _pickupGroundDrop(drop) {
-        PickupSystem.pickup(this.playerEntity, drop, this.floatingTextManager);
+        GroundDropPickupSystem.pickup(this.playerEntity, drop, this.floatingTextManager);
     }
 
     /** 渲染地面掉落物品（委托 GroundDropRenderer） */
@@ -1577,9 +1345,9 @@ export class ArenaScene extends BaseGameScene {
     exit() {
         this.multiplayerManager.clear();
         this.selectedTarget = null;
-        this.skillRangeIndicators = [];
+        this.skillRangeIndicator.clear();
+        this.moveTargetIndicator.clear();
         this.boneCorpses = [];
-        this.moveTargetIndicators = [];
         this.groundDrops = [];
         this._whirlwindUntil = 0;
         this._whirlwindNextParticle = 0;
