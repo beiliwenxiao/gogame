@@ -301,12 +301,11 @@ export class MeleeAttackSystem {
         hitEntities: []
       });
     } else {
-      const speed = 800;
+      const speed = 420;  // 初速度降低，有减速感
       // 飞行距离与武器攻击距离一致
       const flyDist = sectorRadius;
       
       const mainhandWeapon = equipComp ? equipComp.getEquipment('mainhand') : null;
-      // 修复：读取 multiArrow（前端字段名），不是 multishot
       const multiArrow = mainhandWeapon?.multiArrow || 0;
       const pierce = mainhandWeapon?.pierce || 0;
       
@@ -325,21 +324,23 @@ export class MeleeAttackSystem {
           y: playerCenter.y,
           dir: arrowDir,
           speed: speed,
+          vy: -30,                // 初始轻微上扬
+          gravity: 220,           // 重力（px/s²），让箭有明显下坠
+          friction: 0.998,        // 极小阻力，几乎不减速，只靠重力产生弧线
           targetDist: flyDist,
           traveled: 0,
           age: 0,
-          maxAge: flyDist / speed + 0.1,
+          maxAge: flyDist / speed * 2.0 + 0.5,  // 足够长，确保能插地
           type: 'arrow',
           damage: 0,
           pierce: pierce,
           pierceCount: 0,
           hitEntities: [],
-          // 插地状态
           stuck: false,
           stuckAge: 0,
           stuckMaxAge: 5,
-          stuckAngle: (Math.random() - 0.5) * 0.3,          // 随机小幅倾斜（±0.15rad）
-          embedRatio: 0.2 + Math.random() * 0.6              // 嵌入比例 1/5 ~ 4/5
+          stuckAngle: (Math.random() - 0.5) * 0.3,
+          embedRatio: 0.2 + Math.random() * 0.6
         });
       }
     }
@@ -386,7 +387,14 @@ export class MeleeAttackSystem {
           e.traveled += e.speed * deltaTime;
           e.x += Math.cos(e.dir) * e.speed * deltaTime;
           e.y += Math.sin(e.dir) * e.speed * deltaTime;
-          if (e.traveled >= e.targetDist) {
+          e.speed *= Math.pow(e.friction ?? 0.96, deltaTime * 60);
+          e.vy = (e.vy ?? 0) + (e.gravity ?? 180) * deltaTime;
+          e.y += e.vy * deltaTime;
+          const vx2 = Math.cos(e.dir) * e.speed;
+          if (Math.abs(vx2) > 0.1 || Math.abs(e.vy) > 0.1) {
+            e.renderDir = Math.atan2(e.vy, vx2);
+          }
+          if (e.traveled >= e.targetDist || e.age >= e.maxAge) {
             e.stuck = true;
             e.stuckAge = 0;
           }
@@ -450,6 +458,18 @@ export class MeleeAttackSystem {
         e.x += Math.cos(e.dir) * e.speed * deltaTime;
         e.y += Math.sin(e.dir) * e.speed * deltaTime;
         
+        // 减速（空气阻力）
+        e.speed *= Math.pow(e.friction ?? 0.99, deltaTime * 60);
+        // 重力：vy 每帧增加，Y 轴下坠
+        e.vy = (e.vy ?? 0) + (e.gravity ?? 100) * deltaTime;
+        e.y += e.vy * deltaTime;
+        // 实时更新箭矢朝向（跟随速度方向）
+        const vx = Math.cos(e.dir) * e.speed;
+        const vy = e.vy ?? 0;
+        if (Math.abs(vx) > 0.1 || Math.abs(vy) > 0.1) {
+          e.renderDir = Math.atan2(vy, vx);
+        }
+        
         if (e.damage && this.combatSystem && !this._arenaMode) {
           const hitRadius = 20;
           for (const entity of this.entities) {
@@ -485,8 +505,8 @@ export class MeleeAttackSystem {
           }
         }
 
-        // 飞行到达终点：插地
-        if (e.traveled >= e.targetDist) {
+        // 飞行到达终点或超时：插地
+        if (e.traveled >= e.targetDist || e.age >= e.maxAge) {
           e.stuck = true;
           e.stuckAge = 0;
           continue;
@@ -596,42 +616,43 @@ export class MeleeAttackSystem {
           ctx.lineWidth = 1.5;
           ctx.stroke();
         } else {
-          // 飞行中：更大的箭矢
-          const len = 32;
-          const tailX = e.x - Math.cos(e.dir) * len;
-          const tailY = e.y - Math.sin(e.dir) * len;
+          // 飞行中：实体箭矢，方向跟随速度
+          const drawDir = e.renderDir ?? e.dir;
+          const len = 28;
+          const tailX = e.x - Math.cos(drawDir) * len;
+          const tailY = e.y - Math.sin(drawDir) * len;
 
-          // 外层光晕
+          // 细光晕（轻微，不要太虚）
           ctx.beginPath();
           ctx.moveTo(tailX, tailY);
           ctx.lineTo(e.x, e.y);
-          ctx.strokeStyle = `rgba(255, 220, 100, ${alpha * 0.25})`;
-          ctx.lineWidth = 10;
+          ctx.strokeStyle = `rgba(255, 200, 60, ${alpha * 0.25})`;
+          ctx.lineWidth = 5;
           ctx.lineCap = 'round';
           ctx.stroke();
 
-          // 箭杆光芒
+          // 实体箭杆（深棕色）
           ctx.beginPath();
           ctx.moveTo(tailX, tailY);
           ctx.lineTo(e.x, e.y);
-          ctx.strokeStyle = `rgba(255, 240, 180, ${alpha * 0.75})`;
-          ctx.lineWidth = 3.5;
+          ctx.strokeStyle = `rgba(120, 75, 20, ${alpha * 0.95})`;
+          ctx.lineWidth = 2.5;
           ctx.stroke();
 
-          // 箭头亮点
+          // 箭头（金属色）
           ctx.beginPath();
-          ctx.arc(e.x, e.y, 3.5, 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+          ctx.arc(e.x, e.y, 3, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(190, 160, 60, ${alpha})`;
           ctx.fill();
 
           // 尾羽
-          const featherLen = 8;
+          const featherLen = 7;
           ctx.beginPath();
           ctx.moveTo(tailX, tailY);
-          ctx.lineTo(tailX - Math.cos(e.dir - 0.45) * featherLen, tailY - Math.sin(e.dir - 0.45) * featherLen);
+          ctx.lineTo(tailX - Math.cos(drawDir - 0.5) * featherLen, tailY - Math.sin(drawDir - 0.5) * featherLen);
           ctx.moveTo(tailX, tailY);
-          ctx.lineTo(tailX - Math.cos(e.dir + 0.45) * featherLen, tailY - Math.sin(e.dir + 0.45) * featherLen);
-          ctx.strokeStyle = `rgba(255, 255, 200, ${alpha * 0.8})`;
+          ctx.lineTo(tailX - Math.cos(drawDir + 0.5) * featherLen, tailY - Math.sin(drawDir + 0.5) * featherLen);
+          ctx.strokeStyle = `rgba(230, 220, 190, ${alpha * 0.9})`;
           ctx.lineWidth = 1.5;
           ctx.stroke();
         }

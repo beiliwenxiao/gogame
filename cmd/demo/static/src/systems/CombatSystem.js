@@ -399,22 +399,11 @@ export class CombatSystem {
   renderDamageNumbers(ctx) {
     if (this.damageNumbers.length === 0) return;
     
-    // 调试日志（每秒只输出一次）
-    if (!this._lastDamageNumberLog || performance.now() - this._lastDamageNumberLog > 1000) {
-      console.log(`[renderDamageNumbers] 正在渲染 ${this.damageNumbers.length} 个伤害数字`);
-      this._lastDamageNumberLog = performance.now();
-    }
-    
     ctx.save();
     
     for (const dn of this.damageNumbers) {
       // 转换为屏幕坐标
       const screenPos = this.worldToScreen({ x: dn.x, y: dn.y });
-      
-      // 调试：输出屏幕坐标
-      if (dn.damageType === '武器碰撞') {
-        console.log(`[renderDamageNumbers] 武器碰撞伤害 世界坐标:(${dn.x.toFixed(0)}, ${dn.y.toFixed(0)}) -> 屏幕坐标:(${screenPos.x.toFixed(0)}, ${screenPos.y.toFixed(0)})`);
-      }
       
       // 计算透明度（根据生命周期）
       const alpha = dn.life / dn.maxLife;
@@ -1001,8 +990,6 @@ export class CombatSystem {
    * @param {string} damageType - 伤害类型（可选）
    */
   showDamageNumber(position, damage, damageType = null) {
-    // 调试日志
-    console.log(`[showDamageNumber] 位置: (${position?.x?.toFixed(0)}, ${position?.y?.toFixed(0)}), 伤害: ${damage}, 类型: ${damageType}`);
     
     // 武器碰撞的伤害数字显示在更高的位置，避免重叠
     const yOffset = damageType === '武器碰撞' ? -50 : -20;
@@ -1018,7 +1005,6 @@ export class CombatSystem {
     };
     
     this.damageNumbers.push(damageNumber);
-    console.log(`[showDamageNumber] damageNumbers数组长度: ${this.damageNumbers.length}`);
   }
 
   /**
@@ -3166,13 +3152,8 @@ export class CombatSystem {
     if (this.onEnterCombatCallback) {
       this.onEnterCombatCallback();
     }
-    
-    console.log('CombatSystem: 进入战斗状态');
   }
 
-  /**
-   * 脱离战斗状态
-   */
   exitCombat() {
     this.combatState.inCombat = false;
     this.combatState.combatExitTimer = 0;
@@ -3180,8 +3161,6 @@ export class CombatSystem {
     if (this.onExitCombatCallback) {
       this.onExitCombatCallback();
     }
-    
-    console.log('CombatSystem: 脱离战斗状态');
   }
 
   /**
