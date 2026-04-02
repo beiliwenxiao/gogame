@@ -240,15 +240,9 @@ export class PlayerInfoPanel extends UIElement {
       { label: '速度', value: stats.speed, color: '#00ff00' }
     ];
 
-    // 弓箭手显示箭矢数量（副手 + 背包总数）
+    // 弓箭手显示箭矢数量（仅统计背包，副手只是类型标记）
     if (this.player.class === 'archer') {
       let arrowCount = 0;
-      if (equipment) {
-        const offhand = equipment.getEquipment('offhand');
-        if (offhand && offhand.subType === 'ammo' && offhand.quantity > 0) {
-          arrowCount += offhand.quantity;
-        }
-      }
       const inventory = this.player.getComponent('inventory');
       if (inventory) {
         for (const { slot } of inventory.getAllItems()) {
@@ -337,13 +331,18 @@ export class PlayerInfoPanel extends UIElement {
           ctx.fillText(equippedItem.name.charAt(0), slotX + slotWidth / 2, slotY + slotHeight / 2);
         }
         
-        // 数量显示（箭矢等可堆叠装备）
-        if (equippedItem.quantity != null && equippedItem.quantity > 0) {
+        // 数量显示（箭矢：从背包读总数；其他可堆叠装备直接读 quantity）
+        let displayQty = equippedItem.quantity;
+        if (equippedItem.subType === 'ammo' && equippedItem.id) {
+          const inv = this.player.getComponent('inventory');
+          displayQty = inv ? inv.getItemCount(equippedItem.id) : 0;
+        }
+        if (displayQty != null && displayQty > 0) {
           ctx.fillStyle = '#ffffff';
           ctx.font = 'bold 11px Arial';
           ctx.textAlign = 'right';
           ctx.textBaseline = 'bottom';
-          ctx.fillText(`${equippedItem.quantity}`, slotX + slotWidth - 3, slotY + slotHeight - 3);
+          ctx.fillText(`${displayQty}`, slotX + slotWidth - 3, slotY + slotHeight - 3);
         }
       } else {
         // 绘制空槽提示

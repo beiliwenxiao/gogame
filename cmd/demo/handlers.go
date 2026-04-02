@@ -174,7 +174,18 @@ func (s *DemoServer) handleEquip(session *PlayerSession, data json.RawMessage) {
 		session.Send(ServerMessage{Type: MsgError, Data: "该装备不适合你的职业"})
 		return
 	}
-	if err := s.db.EquipItem(session.charID, req.EquipDefID, eqDef.SlotType); err != nil {
+	// 近战职业不允许装备箭矢到副手
+	if eqDef.SlotType == "ammo" && session.charClass != "archer" {
+		session.Send(ServerMessage{Type: MsgError, Data: "近战职业无法装备箭矢"})
+		return
+	}
+	// 箭矢装备时写入 quantity=99
+	if eqDef.SlotType == "ammo" {
+		if err := s.db.EquipAmmo(session.charID, eqDef.ID, 99); err != nil {
+			session.Send(ServerMessage{Type: MsgError, Data: "装备失败"})
+			return
+		}
+	} else if err := s.db.EquipItem(session.charID, req.EquipDefID, eqDef.SlotType); err != nil {
 		session.Send(ServerMessage{Type: MsgError, Data: "装备失败"})
 		return
 	}

@@ -621,21 +621,25 @@ export class NetworkCombatSystem {
         let sectorRadius = maxRange;
         const isRanged = mas ? mas.sectorIsRanged : false;
 
-        // 远程攻击消耗箭矢
+        // 远程攻击消耗箭矢（从背包扣，副手只是类型标记）
         if (isRanged) {
             const equipComp = scene.playerEntity.getComponent('equipment');
+            const inventory = scene.playerEntity.getComponent('inventory');
             if (equipComp) {
                 const offhand = equipComp.getEquipment('offhand');
-                if (!offhand || offhand.subType !== 'ammo' || !offhand.quantity || offhand.quantity <= 0) {
-                    // 尝试从背包自动补充箭矢
-                    const inventory = scene.playerEntity.getComponent('inventory');
+                const ammoId = offhand?.subType === 'ammo' ? offhand.id : null;
+                // 检查背包中是否有箭矢
+                const hasAmmo = ammoId && inventory &&
+                    inventory.getAllItems().some(({ slot }) =>
+                        slot.item && slot.item.id === ammoId && slot.quantity > 0
+                    );
+                if (!hasAmmo) {
+                    // 尝试找背包中任意箭矢，自动切换副手类型
                     let refilled = false;
                     if (inventory) {
-                        for (const { slot, index } of inventory.getAllItems()) {
+                        for (const { slot } of inventory.getAllItems()) {
                             if (slot.item && (slot.item.subType === 'ammo' || slot.item.type === 'ammo')) {
-                                const newAmmo = { ...slot.item, quantity: slot.quantity };
-                                inventory.removeFromSlot(index, slot.quantity);
-                                equipComp.equip('offhand', newAmmo);
+                                equipComp.equip('offhand', { ...slot.item, quantity: null });
                                 refilled = true;
                                 break;
                             }
@@ -646,18 +650,19 @@ export class NetworkCombatSystem {
                             scene.floatingTextManager.addText(
                                 selfTransform.position.x,
                                 selfTransform.position.y - 70,
-                                '没有箭矢！',
-                                '#ff6666'
+                                '没有箭矢！', '#ff6666'
                             );
                         }
                         return;
                     }
                 }
-                // 消耗1支箭矢
+                // 从背包消耗1支箭矢
                 const currentOffhand = equipComp.getEquipment('offhand');
-                if (currentOffhand && currentOffhand.quantity > 0) {
-                    currentOffhand.quantity -= 1;
-                    if (currentOffhand.quantity <= 0) {
+                if (currentOffhand?.id && inventory) {
+                    inventory.removeItem(currentOffhand.id, 1);
+                    // 若背包中该类箭矢耗尽，清除副手类型标记
+                    const remaining = inventory.getItemCount(currentOffhand.id);
+                    if (remaining <= 0) {
                         equipComp.unequip('offhand');
                     }
                 }

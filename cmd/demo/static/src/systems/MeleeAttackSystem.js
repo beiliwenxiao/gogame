@@ -187,24 +187,26 @@ export class MeleeAttackSystem {
     // 远程攻击需要消耗箭矢（联网模式下跳过，由 NetworkCombatSystem 管理）
     if (this.sectorIsRanged && !this._arenaMode) {
       const equipComp2 = this.playerEntity.getComponent('equipment');
+      const inventory2 = this.playerEntity.getComponent('inventory');
       if (equipComp2) {
         const offhand = equipComp2.getEquipment('offhand');
-        if (!offhand || offhand.subType !== 'ammo' || !offhand.quantity || offhand.quantity <= 0) {
+        const ammoId = offhand?.subType === 'ammo' ? offhand.id : null;
+        const hasAmmo = ammoId && inventory2 && inventory2.getItemCount(ammoId) > 0;
+        if (!hasAmmo) {
           if (this.floatingTextManager) {
             const playerTransform = this.playerEntity.getComponent('transform');
             if (playerTransform) {
               this.floatingTextManager.addText(
-                playerTransform.position.x,
-                playerTransform.position.y - 70,
-                '没有箭矢！',
-                '#ff6666'
+                playerTransform.position.x, playerTransform.position.y - 70,
+                '没有箭矢！', '#ff6666'
               );
             }
           }
           return;
         }
-        offhand.quantity -= 1;
-        if (offhand.quantity <= 0) {
+        // 从背包消耗1支
+        inventory2.removeItem(ammoId, 1);
+        if (inventory2.getItemCount(ammoId) <= 0) {
           equipComp2.unequip('offhand');
         }
       }
@@ -701,12 +703,14 @@ export class MeleeAttackSystem {
       ctx.fillText(`${remaining}s`, cx, barY - 2);
     }
     
-    // 远程武器时显示剩余箭矢数量
+    // 远程武器时显示剩余箭矢数量（从背包读）
     if (this.sectorIsRanged) {
       const eqComp = this.playerEntity.getComponent('equipment');
+      const invComp = this.playerEntity.getComponent('inventory');
       if (eqComp) {
         const offhand = eqComp.getEquipment('offhand');
-        const arrowCount = (offhand && offhand.subType === 'ammo') ? (offhand.quantity || 0) : 0;
+        const ammoId = offhand?.subType === 'ammo' ? offhand.id : null;
+        const arrowCount = (ammoId && invComp) ? invComp.getItemCount(ammoId) : 0;
         ctx.font = 'bold 11px Arial';
         ctx.textAlign = 'center';
         ctx.fillStyle = arrowCount > 10 ? '#88ccff' : arrowCount > 0 ? '#ffaa44' : '#ff4444';

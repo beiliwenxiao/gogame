@@ -257,13 +257,18 @@ function renderLobby() {
 
   // 装备栏
   const slots = document.getElementById('equip-slots');
-  const slotNames = { weapon: '武器', helmet: '头盔', armor: '铠甲', boots: '鞋子' };
-  slots.innerHTML = Object.entries(slotNames).map(([type, name]) => {
+  const slotNames = { weapon: '武器', helmet: '头盔', armor: '铠甲', boots: '鞋子', ammo: '副手(箭)' };
+  const slotsToShow = APP.character?.class === 'archer'
+    ? ['weapon', 'helmet', 'armor', 'boots', 'ammo']
+    : ['weapon', 'helmet', 'armor', 'boots'];
+  slots.innerHTML = slotsToShow.map(type => {
+    const name = slotNames[type];
     const eq = APP.equipments.find(e => e.slot_type === type);
     if (eq) {
+      const qty = eq.quantity > 1 ? ` ×${eq.quantity}` : '';
       return `<div class="equip-slot">
         <span class="slot-name">${name}</span>
-        <span class="equip-name quality-${eq.def.quality}">${eq.def.name}</span>
+        <span class="equip-name quality-${eq.def.quality}">${eq.def.name}${qty}</span>
         <button class="btn btn-small btn-secondary" onclick="doUnequip('${type}')">卸下</button>
       </div>`;
     }
@@ -287,7 +292,7 @@ function renderEquipList(list) {
     if (eq.hp > 0) stats.push(`HP+${eq.hp}`);
     if (eq.speed > 0) stats.push(`速+${eq.speed}`);
     if (eq.crit_rate > 0) stats.push(`暴+${(eq.crit_rate * 100).toFixed(0)}%`);
-    const slotNames = { weapon: '武器', helmet: '头盔', armor: '铠甲', boots: '鞋子' };
+    const slotNames = { weapon: '武器', helmet: '头盔', armor: '铠甲', boots: '鞋子', ammo: '副手(箭)' };
     return `<div class="equip-item" onclick="doEquip(${eq.id})">
       <div><span class="eq-name quality-${eq.quality}">${eq.name}</span> <small style="color:#666">[${slotNames[eq.slot_type] || eq.slot_type}]</small></div>
       <div class="eq-stats">${stats.join(' ')}</div>

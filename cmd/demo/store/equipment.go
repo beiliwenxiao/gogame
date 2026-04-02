@@ -58,6 +58,33 @@ func (s *Store) EquipItem(charID, equipDefID int64, slotType string) error {
 	return nil
 }
 
+// EquipAmmo 装备箭矢到副手（统计背包中所有同类箭矢总数后装备）
+func (s *Store) EquipAmmo(charID, equipDefID int64, quantity int) error {
+	// 统计该角色背包中所有同类箭矢的总数量
+	var total int
+	s.db.QueryRow(
+		"SELECT COALESCE(SUM(quantity),0) FROM char_equipments WHERE character_id=? AND equip_def_id=? AND slot_type='ammo'",
+		charID, equipDefID,
+	).Scan(&total)
+	if total == 0 {
+		total = quantity // 背包无存量时使用传入值（如首次装备）
+	}
+
+	// 删除所有同类箭矢行，再写入一行合并后的数量
+	s.db.Exec(
+		"DELETE FROM char_equipments WHERE character_id=? AND equip_def_id=? AND slot_type='ammo'",
+		charID, equipDefID,
+	)
+	_, err := s.db.Exec(
+		"INSERT INTO char_equipments (character_id, equip_def_id, slot_type, quantity) VALUES (?,?,'ammo',?)",
+		charID, equipDefID, total,
+	)
+	if err != nil {
+		return fmt.Errorf("装备箭矢失败: %w", err)
+	}
+	return nil
+}
+
 // UnequipItem 卸下装备
 func (s *Store) UnequipItem(charID int64, slotType string) error {
 	_, err := s.db.Exec(

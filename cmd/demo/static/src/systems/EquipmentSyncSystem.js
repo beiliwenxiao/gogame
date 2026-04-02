@@ -63,12 +63,11 @@ export class EquipmentSyncSystem {
             }
         }
         if (ammoTemplate) {
-            const equipQty = Math.min(totalAmmo, 99);
-            equipment.equip('offhand', { ...ammoTemplate, quantity: equipQty });
-            const remaining = totalAmmo - equipQty;
-            if (remaining > 0) {
-                const inventory = playerEntity.getComponent('inventory');
-                inventory?.addItem({ ...ammoTemplate }, remaining);
+            // 副手只记录箭矢类型，不存数量；全部数量放入背包
+            equipment.equip('offhand', { ...ammoTemplate, quantity: null });
+            const inventory = playerEntity.getComponent('inventory');
+            if (inventory && totalAmmo > 0) {
+                inventory.addItem({ ...ammoTemplate, maxStack: 99 }, totalAmmo);
             }
         }
 
