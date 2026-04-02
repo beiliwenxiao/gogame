@@ -762,15 +762,20 @@ export class NetworkCombatSystem {
             mas.sliceCooldownShown = false;
         }
         if (scene.weaponRenderer) {
-            if (attacked && firstTargetTransform) {
-                // 有命中目标：朝第一个目标方向（用脚下1/10高度基准）
+            if (!isRanged && attacked && firstTargetTransform) {
+                // 近战有命中目标：朝第一个目标方向
                 const fSprite = this._getTargetEntity(scene.selectedTarget)?.getComponent('sprite');
                 const fH = fSprite?.height || 64;
                 const dx = firstTargetTransform.position.x - selfCx;
                 const dy = (firstTargetTransform.position.y - fH / 10) - selfCy;
                 scene.weaponRenderer.currentMouseAngle = Math.atan2(dy, dx);
+            } else if (isRanged && scene.inputManager && scene.camera) {
+                // 弓箭手：始终朝鼠标实时位置
+                const mouseWorld = scene.inputManager.getMouseWorldPosition(scene.camera);
+                if (mouseWorld) {
+                    scene.weaponRenderer.currentMouseAngle = Math.atan2(mouseWorld.y - selfCy, mouseWorld.x - selfCx);
+                }
             }
-            // 无论是否命中目标都触发弯刀特效（无目标时朝当前鼠标方向）
             scene.weaponRenderer.startAttack('thrust');
         }
 
@@ -780,9 +785,15 @@ export class NetworkCombatSystem {
                 x: selfCx,
                 y: selfCy
             };
-            // 攻击方向：有目标时朝目标，无目标时用当前鼠标方向
+            // 弓箭手：始终朝鼠标实时位置方向；近战：有目标时朝目标，无目标时朝鼠标
             let dir = sectorDir;
-            if (attacked && firstTargetTransform) {
+            if (isRanged && scene.inputManager && scene.camera) {
+                const mouseWorld = scene.inputManager.getMouseWorldPosition(scene.camera);
+                if (mouseWorld) {
+                    dir = Math.atan2(mouseWorld.y - selfCy, mouseWorld.x - selfCx);
+                    mas.sectorDirection = dir;
+                }
+            } else if (!isRanged && attacked && firstTargetTransform) {
                 const fSprite2 = this._getTargetEntity(scene.selectedTarget)?.getComponent('sprite');
                 const fH2 = fSprite2?.height || 64;
                 const dx = firstTargetTransform.position.x - selfCx;
