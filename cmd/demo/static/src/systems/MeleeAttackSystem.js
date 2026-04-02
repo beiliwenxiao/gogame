@@ -454,6 +454,26 @@ export class MeleeAttackSystem {
           continue;
         }
 
+        // 附着状态：跟随目标实体，目标死亡则落地
+        if (e.attached) {
+          const t = e.attachedEntity?.getComponent('transform');
+          if (!t || e.attachedEntity.dead || e.attachedEntity.isDead) {
+            // 目标死亡，落在当前位置插地
+            e.attached = false;
+            e.attachedEntity = null;
+            e.stuck = true;
+            e.stuckAge = 0;
+            // 落地时随机偏移一点，像从身上掉落
+            e.x += (Math.random() - 0.5) * 12;
+            e.y += (Math.random() - 0.5) * 6;
+          } else {
+            // 跟随目标
+            e.x = t.position.x + (e.attachOffsetX || 0);
+            e.y = t.position.y + (e.attachOffsetY || 0);
+          }
+          continue;
+        }
+
         e.traveled += e.speed * deltaTime;
         e.x += Math.cos(e.dir) * e.speed * deltaTime;
         e.y += Math.sin(e.dir) * e.speed * deltaTime;
@@ -468,6 +488,30 @@ export class MeleeAttackSystem {
         const vy = e.vy ?? 0;
         if (Math.abs(vx) > 0.1 || Math.abs(vy) > 0.1) {
           e.renderDir = Math.atan2(vy, vx);
+        }
+
+        // 联网模式：检测是否靠近预附着目标，靠近时飞行箭矢消失，附着箭矢显示
+        if (e.pendingAttachEntity && e.pendingAttachArrow) {
+          const pt = e.pendingAttachEntity.getComponent('transform');
+          if (pt) {
+            const pdx = e.x - pt.position.x;
+            const pdy = e.y - pt.position.y;
+            const pdist = Math.sqrt(pdx * pdx + pdy * pdy);
+            if (pdist <= 35) {
+              // 飞行箭矢消失，附着箭矢显示
+              e.pendingAttachArrow.hidden = false;
+              this.sectorSlashEffects.splice(i, 1);
+              continue;
+            }
+          } else {
+            // 目标已消失，附着箭矢直接显示并插地
+            e.pendingAttachArrow.hidden = false;
+            e.pendingAttachArrow.attached = false;
+            e.pendingAttachArrow.stuck = true;
+            e.pendingAttachArrow.stuckAge = 0;
+            this.sectorSlashEffects.splice(i, 1);
+            continue;
+          }
         }
         
         if (e.damage && this.combatSystem && !this._arenaMode) {
@@ -497,8 +541,11 @@ export class MeleeAttackSystem {
               
               e.pierceCount = (e.pierceCount || 0) + 1;
               if (e.pierceCount > (e.pierce || 0)) {
-                // 命中且穿刺耗尽：直接删除，不插地
-                e.age = e.maxAge + 1;
+                // 命中且穿刺耗尽：附着在目标身上
+                e.attached = true;
+                e.attachedEntity = entity;
+                e.attachOffsetX = e.x - targetTransform.position.x;
+                e.attachOffsetY = e.y - targetTransform.position.y;
                 break;
               }
             }
@@ -506,13 +553,13 @@ export class MeleeAttackSystem {
         }
 
         // 飞行到达终点或超时：插地
-        if (e.traveled >= e.targetDist || e.age >= e.maxAge) {
+        if (!e.attached && (e.traveled >= e.targetDist || e.age >= e.maxAge)) {
           e.stuck = true;
           e.stuckAge = 0;
           continue;
         }
       }
-      if (e.age >= e.maxAge && !e.stuck) {
+      if (e.age >= e.maxAge && !e.stuck && !e.attached) {
         this.sectorSlashEffects.splice(i, 1);
       }
     }
@@ -575,10 +622,39 @@ export class MeleeAttackSystem {
         ctx.fill();
         
       } else if (e.type === 'arrow') {
-        if (e.stuck) {
-          // 插地状态：箭竖直插地，箭头嵌入地面，只露出箭杆上部和尾羽
+        if (e.hidden) continue;  // 预附着箭矢，等待飞行箭矢靠近后再显示
+        if (e.attached) {
+          // 附着在目标身上：保持飞行时的方向，扎在身体上
+          const attachDir = e.renderDir ?? e.dir;
+          const len = 22;
+          const tailX = e.x - Math.cos(attachDir) * len;
+          const tailY = e.y - Math.sin(attachDir) * len;
+
+          ctx.beginPath();
+          ctx.moveTo(tailX, tailY);
+          ctx.lineTo(e.x, e.y);
+          ctx.strokeStyle = `rgba(120, 75, 20, 0.92)`;
+          ctx.lineWidth = 2.5;
+          ctx.lineCap = 'round';
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.arc(e.x, e.y, 2.5, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(190, 160, 60, 0.95)`;
+          ctx.fill();
+
+          const featherLen = 6;
+          ctx.beginPath();
+          ctx.moveTo(tailX, tailY);
+          ctx.lineTo(tailX - Math.cos(attachDir - 0.5) * featherLen, tailY - Math.sin(attachDir - 0.5) * featherLen);
+          ctx.moveTo(tailX, tailY);
+          ctx.lineTo(tailX - Math.cos(attachDir + 0.5) * featherLen, tailY - Math.sin(attachDir + 0.5) * featherLen);
+          ctx.strokeStyle = `rgba(230, 220, 190, 0.88)`;
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+
+        } else if (e.stuck) {
           const stuckAlpha = Math.max(0, 1 - e.stuckAge / e.stuckMaxAge);
-          // 嵌入比例：随机 1/5 ~ 4/5，生成时固定
           const embedRatio = e.embedRatio ?? 0.5;
           const totalLen = 30;
           const visibleLen = totalLen * (1 - embedRatio); // 露出地面的长度

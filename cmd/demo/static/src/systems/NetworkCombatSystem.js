@@ -441,6 +441,50 @@ export class NetworkCombatSystem {
                     }
                 }
             }
+
+            // 弓箭手普攻命中：创建预附着箭矢（隐藏），飞行箭矢靠近时再显示
+            if (!data.skill_name && data.attacker_id === scene.selfId && transform) {
+                const mas = scene.meleeAttackSystem;
+                if (mas && mas.sectorIsRanged) {
+                    // 找最近的飞行中箭矢（未附着、未插地、无预附着）
+                    let flyingArrow = null, closestDist = Infinity;
+                    for (const e of mas.sectorSlashEffects) {
+                        if (e.type !== 'arrow' || e.stuck || e.attached || e.hidden || e.pendingAttachEntity) continue;
+                        const dx = e.x - transform.position.x;
+                        const dy = e.y - transform.position.y;
+                        const d = Math.sqrt(dx * dx + dy * dy);
+                        if (d < closestDist) { closestDist = d; flyingArrow = e; }
+                    }
+                    if (flyingArrow) {
+                        // 创建预附着箭矢：位置在目标身体上，初始隐藏
+                        const attachOffsetX = (Math.random() - 0.5) * 8;
+                        const attachOffsetY = -16 + (Math.random() - 0.5) * 10;
+                        const attachArrow = {
+                            type: 'arrow',
+                            x: transform.position.x + attachOffsetX,
+                            y: transform.position.y + attachOffsetY,
+                            dir: flyingArrow.dir,
+                            renderDir: flyingArrow.renderDir ?? flyingArrow.dir,
+                            speed: 0, vy: 0, gravity: 0, friction: 1,
+                            traveled: 0, targetDist: 1,
+                            age: 0, maxAge: 999,
+                            damage: 0, pierce: 0, pierceCount: 0, hitEntities: [],
+                            attached: true,
+                            attachedEntity: targetEntity,
+                            attachOffsetX,
+                            attachOffsetY,
+                            hidden: true,  // 等待飞行箭矢靠近后显示
+                            stuck: false, stuckAge: 0, stuckMaxAge: 5,
+                            stuckAngle: (Math.random() - 0.5) * 0.3,
+                            embedRatio: 0.2 + Math.random() * 0.6
+                        };
+                        mas.sectorSlashEffects.push(attachArrow);
+                        // 飞行箭矢关联预附着箭矢
+                        flyingArrow.pendingAttachEntity = targetEntity;
+                        flyingArrow.pendingAttachArrow = attachArrow;
+                    }
+                }
+            }
         }
     }
 
