@@ -32,7 +32,10 @@ func (s *Store) SeedDefaultEquipment() error {
 		// 检查旋风斩冷却是否已更新为15秒
 		var whirlwindCD float64
 		s.db.QueryRow("SELECT cooldown FROM skill_defs WHERE name='旋风斩' LIMIT 1").Scan(&whirlwindCD)
-		if hasIconID == 0 || skillVersion != "fan" || warcryDmg < 0.29 || archerSkillCount == 0 || leatherDef < 15 || ironArrowCount == 0 || bowRange > 50 || whirlwindCD < 14 {
+		// 检查暗影之弓攻击力是否已更新为180
+		var shadowBowAtk float64
+		s.db.QueryRow("SELECT attack FROM equipment_defs WHERE name='暗影之弓' LIMIT 1").Scan(&shadowBowAtk)
+		if hasIconID == 0 || skillVersion != "fan" || warcryDmg < 0.29 || archerSkillCount == 0 || leatherDef < 15 || ironArrowCount == 0 || bowRange > 50 || whirlwindCD < 14 || shadowBowAtk < 179 {
 			// 旧数据，删除重建
 			log.Println("检测到旧数据，重新初始化...")
 			s.db.Exec("DELETE FROM equipment_defs")
@@ -58,8 +61,8 @@ func (s *Store) SeedDefaultEquipment() error {
 			Pierce: 1, MultiArrow: 1, AttackInterval: 1.5, AttackRange: 30, AttackDistance: 250},
 		{Name: "长弓", IconID: "long_bow", SlotType: "weapon", Class: "archer", Quality: "rare", Level: 1, Attack: 32, Speed: 15, CritRate: 0.05,
 			Pierce: 2, MultiArrow: 2, AttackInterval: 1.3, AttackRange: 30, AttackDistance: 270},
-		{Name: "暗影之弓", IconID: "shadow_bow", SlotType: "weapon", Class: "archer", Quality: "epic", Level: 1, Attack: 80, Speed: 20, CritRate: 0.1,
-			Pierce: 3, MultiArrow: 3, AttackInterval: 1.5, AttackRange: 30, AttackDistance: 300},
+		{Name: "暗影之弓", IconID: "shadow_bow", SlotType: "weapon", Class: "archer", Quality: "epic", Level: 1, Attack: 180, Speed: 20, CritRate: 0.1,
+			Pierce: 4, MultiArrow: 3, AttackInterval: 1.5, AttackRange: 30, AttackDistance: 300},
 		// 通用防具
 		{Name: "皮甲", IconID: "leather_armor", SlotType: "armor", Class: "all", Quality: "normal", Level: 1, Defense: 15, HP: 30},
 		{Name: "锁子甲", IconID: "chain_mail", SlotType: "armor", Class: "all", Quality: "rare", Level: 1, Defense: 30, HP: 60},

@@ -959,7 +959,7 @@ export class BaseGameScene extends PrologueScene {
         if (!this.playerEntity.dead) {
           this.meleeAttackSystem.setPlayerEntity(this.playerEntity);
           this.meleeAttackSystem.setEntities(this.entities);
-          this.meleeAttackSystem.update(mouseWorldPos, playerCenter, currentTime);
+          this.meleeAttackSystem.update(mouseWorldPos, playerCenter, currentTime, deltaTime);
         }
       }
     }

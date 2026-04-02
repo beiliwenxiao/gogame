@@ -292,6 +292,8 @@ function renderEquipList(list) {
     if (eq.hp > 0) stats.push(`HP+${eq.hp}`);
     if (eq.speed > 0) stats.push(`速+${eq.speed}`);
     if (eq.crit_rate > 0) stats.push(`暴+${(eq.crit_rate * 100).toFixed(0)}%`);
+    if (eq.pierce > 0) stats.push(`穿刺+${eq.pierce}`);
+    if (eq.multi_arrow > 0) stats.push(`多重箭+${eq.multi_arrow}`);
     const slotNames = { weapon: '武器', helmet: '头盔', armor: '铠甲', boots: '鞋子', ammo: '副手(箭)' };
     return `<div class="equip-item" onclick="doEquip(${eq.id})">
       <div><span class="eq-name quality-${eq.quality}">${eq.name}</span> <small style="color:#666">[${slotNames[eq.slot_type] || eq.slot_type}]</small></div>

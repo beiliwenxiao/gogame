@@ -99,11 +99,9 @@ export class NetworkCombatSystem {
     attackTarget() {
         const scene = this.scene;
         if (!scene.selectedTarget || !scene.ws) {
-            console.log('NetworkCombatSystem.attackTarget: 提前返回，selectedTarget=', scene.selectedTarget, 'ws=', !!scene.ws);
             return;
         }
         if (scene.playerEntity && scene.playerEntity.dead) {
-            console.log('NetworkCombatSystem.attackTarget: 灵魂状态，禁止攻击');
             return;
         }
         // 昏迷检查
@@ -114,7 +112,6 @@ export class NetworkCombatSystem {
         const isNPC = this._isNPCTarget(scene.selectedTarget);
         const entity = this._getTargetEntity(scene.selectedTarget);
         if (!entity || entity.dead) {
-            console.log('NetworkCombatSystem.attackTarget: 目标不存在或已死亡，isNPC=', isNPC, 'entity=', !!entity, 'dead=', entity?.dead);
             return;
         }
 
@@ -140,10 +137,8 @@ export class NetworkCombatSystem {
                 const dx = targetTransform.position.x - selfTransform.position.x;
                 const dy = targetTransform.position.y - selfTransform.position.y;
                 const dist = Math.sqrt(dx * dx + dy * dy);
-                console.log('NetworkCombatSystem.attackTarget: 范围预判，maxRange=', maxRange, 'dist=', dist.toFixed(1));
 
                 if (!combat.isInSkillRange(selfTransform.position, targetTransform.position, { range: maxRange, area_type: 'single' })) {
-                    console.log('NetworkCombatSystem.attackTarget: 超出攻击范围');
                     if (scene.floatingTextManager) {
                         scene.floatingTextManager.addText(selfTransform.position.x, selfTransform.position.y - 20, '超出攻击范围', '#ff6600');
                     }
@@ -153,7 +148,6 @@ export class NetworkCombatSystem {
         }
 
         const msgType = isNPC ? 'attack_npc' : 'attack';
-        console.log('NetworkCombatSystem.attackTarget: 发送攻击消息，msgType=', msgType, 'target_id=', scene.selectedTarget);
         scene.ws.send(msgType, { target_id: scene.selectedTarget });
 
         // 触发弯刀攻击动画
@@ -166,14 +160,12 @@ export class NetworkCombatSystem {
                 scene.weaponRenderer.currentMouseAngle = Math.atan2(dy, dx);
             }
             scene.weaponRenderer.startAttack('thrust');
-            console.log('NetworkCombatSystem.attackTarget: 触发弯刀攻击动画');
         }
     }
 
     // ─── 施放技能 ───
     castSkill(skillId) {
         const scene = this.scene;
-        console.log('[NetworkCombat] castSkill called, skillId=', skillId, 'ws=', !!scene.ws, 'playerEntity=', !!scene.playerEntity, 'dead=', scene.playerEntity?.dead);
         if (!scene.ws || !scene.playerEntity) return;
         if (scene.playerEntity.dead) return;
         // 昏迷检查
@@ -386,14 +378,12 @@ export class NetworkCombatSystem {
     // ─── 处理伤害消息 ───
     onDamage(data) {
         const scene = this.scene;
-        console.log('NetworkCombatSystem.onDamage: 收到伤害数据', data);
 
         // 如果攻击者是 NPC，但该 NPC 已经死亡/不存在，忽略此伤害
         // （时序竞态：npcAITick 锁内收集攻击列表，解锁后广播；此时 NPC 可能已被玩家击杀）
         if (data.attacker_is_npc) {
             const attackerNPC = scene.npcEntities.get(data.attacker_id);
             if (!attackerNPC || attackerNPC.dead || attackerNPC.isDead) {
-                console.log('NetworkCombatSystem.onDamage: 攻击者 NPC 已死亡，忽略伤害，attacker_id=', data.attacker_id);
                 return;
             }
         }
@@ -401,7 +391,6 @@ export class NetworkCombatSystem {
         let targetEntity;
         if (data.target_is_npc) {
             targetEntity = scene.npcEntities.get(data.target_id);
-            console.log('NetworkCombatSystem.onDamage: NPC目标，id=', data.target_id, 'entity=', !!targetEntity);
         } else {
             targetEntity = data.target_id === scene.selfId
                 ? scene.playerEntity
@@ -411,7 +400,6 @@ export class NetworkCombatSystem {
         if (targetEntity) {
             const stats = targetEntity.getComponent('stats');
             if (stats) {
-                console.log('NetworkCombatSystem.onDamage: 更新HP，旧HP=', stats.hp, '新HP=', data.target_hp);
                 stats.hp = data.target_hp;
                 stats.maxHp = data.target_max_hp;
                 if (data.target_is_npc && stats.hp <= 0) {
@@ -505,10 +493,8 @@ export class NetworkCombatSystem {
             }
 
             // 战士技能范围指示器（只给自己的技能显示）
-            console.log('[SkillRange] onSkillCasted check:', 'caster=', data.caster_id, 'self=', scene.selfId, 'area_type=', data.area_type, 'area_size=', data.area_size, '_showSkillRange=', !!scene._showSkillRange);
             if (data.caster_id === scene.selfId && transform && scene._showSkillRange) {
                 const footCenter = scene._getFootCenter && scene._getFootCenter();
-                console.log('[SkillRange] footCenter=', footCenter, 'areaType=', data.area_type);
                 if (footCenter) {
                     const areaType = data.area_type;
                     const equipment = scene.playerEntity.getComponent('equipment');
@@ -571,7 +557,6 @@ export class NetworkCombatSystem {
     // ─── 群攻：攻击范围内所有敌人 ───
     attackAllInRange() {
         const scene = this.scene;
-        console.log('NetworkCombatSystem.attackAllInRange: 进入, ws=', !!scene.ws, 'playerEntity=', !!scene.playerEntity, 'dead=', scene.playerEntity?.dead);
         if (!scene.ws || !scene.playerEntity) return;
         if (scene.playerEntity.dead) return;
         // 恐惧检查
@@ -582,7 +567,6 @@ export class NetworkCombatSystem {
 
         // 安全区检查
         if (scene.isInSafeZone(selfTransform.position.x, selfTransform.position.y)) {
-            console.log('NetworkCombatSystem.attackAllInRange: 安全区内，return');
             if (scene.floatingTextManager) {
                 scene.floatingTextManager.addText(selfTransform.position.x, selfTransform.position.y - 20, '安全区内禁止攻击', '#ffaa00');
             }
@@ -674,12 +658,12 @@ export class NetworkCombatSystem {
             if (equipComp2) {
                 const mainhand = equipComp2.getEquipment('mainhand');
                 if (mainhand) {
-                    // 近战：attackRange 是角度（度数），转半角弧度
                     if (!isRanged && mainhand.attackRange != null) sectorHalfAngle = (mainhand.attackRange * Math.PI / 180) / 2;
-                    if (mainhand.attackDistance != null) sectorRadius = mainhand.attackDistance;
+                    if (mainhand.attackDistance != null && mainhand.attackDistance > 0) sectorRadius = mainhand.attackDistance;
                 }
             }
-            if (sectorRadius === maxRange) sectorRadius = mas.sliceAttackRange;
+            // fallback：仅在 sectorRadius 未从装备读到时才用 sliceAttackRange
+            if (sectorRadius <= 0) sectorRadius = mas.sliceAttackRange;
         }
 
         // 攻击圆心：脚下 1/10 高度
@@ -769,17 +753,13 @@ export class NetworkCombatSystem {
             );
         }
 
-        if (!attacked) {
-            console.log('NetworkCombatSystem.attackAllInRange: 范围内无目标');
-        }
+        if (!attacked) { /* 范围内无目标 */ }
     }
 
     // ─── 空格键攻击（在 update 中调用） ───
     handleSpaceAttack() {
         const scene = this.scene;
         if (!scene.inputManager || !scene.inputManager.isKeyPressed('space')) return;
-
-        console.log('NetworkCombatSystem: 空格键按下, weaponRenderer=', !!scene.weaponRenderer, 'ws=', !!scene.ws, 'playerEntity=', !!scene.playerEntity, 'dead=', scene.playerEntity?.dead);
         this.attackAllInRange();
     }
 }

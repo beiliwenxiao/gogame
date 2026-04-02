@@ -110,7 +110,9 @@ class ArenaRenderer {
 
         const now = performance.now();
         if (!this._lastTime) this._lastTime = now;
-        const dt = (now - this._lastTime) / 1000;
+        const rawDt = (now - this._lastTime) / 1000;
+        // 限制最大 deltaTime，防止页面切换后台或 GC 导致大跳帧
+        const dt = Math.min(rawDt, 0.05);
         this._lastTime = now;
 
         if (this.ctx && this.sceneManager) {

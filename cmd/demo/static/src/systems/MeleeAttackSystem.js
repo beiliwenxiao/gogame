@@ -86,7 +86,7 @@ export class MeleeAttackSystem {
    * @param {Object} playerCenter - 玩家中心坐标
    * @param {number} currentTime - 当前时间（秒）
    */
-  update(mouseWorldPos, playerCenter, currentTime) {
+  update(mouseWorldPos, playerCenter, currentTime, deltaTime = 1/60) {
     if (!this.inputManager || !this.combatSystem) return;
 
     // 清理过期的轨迹点
@@ -94,11 +94,11 @@ export class MeleeAttackSystem {
 
     // 更新攻击闪光动画
     if (this.sectorAttackFlash > 0) {
-      this.sectorAttackFlash -= 1 / 60;
+      this.sectorAttackFlash -= deltaTime;
     }
 
-    // 更新刀光/箭光特效（安全区内跳过碰撞检测，只更新动画）
-    this.updateSectorSlashEffects(1 / 60);
+    // 更新刀光/箭光特效（使用真实 deltaTime）
+    this.updateSectorSlashEffects(deltaTime);
 
     // 计算鼠标方向角度
     const dx = mouseWorldPos.x - playerCenter.x;
@@ -301,14 +301,17 @@ export class MeleeAttackSystem {
         hitEntities: []
       });
     } else {
-      const speed = 600;
-      const rangedRadius = sectorRadius;
+      const speed = 800;
+      // 飞行距离与武器攻击距离一致
+      const flyDist = sectorRadius;
       
       const mainhandWeapon = equipComp ? equipComp.getEquipment('mainhand') : null;
-      const multishot = mainhandWeapon?.multishot || 0;
+      // 修复：读取 multiArrow（前端字段名），不是 multishot
+      const multiArrow = mainhandWeapon?.multiArrow || 0;
+      const pierce = mainhandWeapon?.pierce || 0;
       
-      const totalArrows = 1 + multishot;
-      const spreadAngle = 0.15;
+      const totalArrows = 1 + multiArrow;
+      const spreadAngle = 0.18;
       
       for (let i = 0; i < totalArrows; i++) {
         let arrowDir = dir;
@@ -322,15 +325,21 @@ export class MeleeAttackSystem {
           y: playerCenter.y,
           dir: arrowDir,
           speed: speed,
-          targetDist: rangedRadius,
+          targetDist: flyDist,
           traveled: 0,
           age: 0,
-          maxAge: rangedRadius / speed + 0.05,
+          maxAge: flyDist / speed + 0.1,
           type: 'arrow',
           damage: 0,
-          pierce: 0,
+          pierce: pierce,
           pierceCount: 0,
-          hitEntities: []
+          hitEntities: [],
+          // 插地状态
+          stuck: false,
+          stuckAge: 0,
+          stuckMaxAge: 5,
+          stuckAngle: (Math.random() - 0.5) * 0.3,          // 随机小幅倾斜（±0.15rad）
+          embedRatio: 0.2 + Math.random() * 0.6              // 嵌入比例 1/5 ~ 4/5
         });
       }
     }
@@ -373,12 +382,22 @@ export class MeleeAttackSystem {
       
       // 安全区内跳过碰撞伤害检测
       if (this._safeZoneDisabled) {
-        if (e.type === 'arrow') {
+        if (e.type === 'arrow' && !e.stuck) {
           e.traveled += e.speed * deltaTime;
           e.x += Math.cos(e.dir) * e.speed * deltaTime;
           e.y += Math.sin(e.dir) * e.speed * deltaTime;
+          if (e.traveled >= e.targetDist) {
+            e.stuck = true;
+            e.stuckAge = 0;
+          }
+        } else if (e.type === 'arrow' && e.stuck) {
+          e.stuckAge += deltaTime;
+          if (e.stuckAge >= e.stuckMaxAge) {
+            this.sectorSlashEffects.splice(i, 1);
+          }
+          continue;
         }
-        if (e.age >= e.maxAge) {
+        if (e.age >= e.maxAge && !e.stuck) {
           this.sectorSlashEffects.splice(i, 1);
         }
         continue;
@@ -418,6 +437,15 @@ export class MeleeAttackSystem {
       
       // 箭矢碰撞检测
       if (e.type === 'arrow') {
+        // 插地状态：只计时，不移动
+        if (e.stuck) {
+          e.stuckAge += deltaTime;
+          if (e.stuckAge >= e.stuckMaxAge) {
+            this.sectorSlashEffects.splice(i, 1);
+          }
+          continue;
+        }
+
         e.traveled += e.speed * deltaTime;
         e.x += Math.cos(e.dir) * e.speed * deltaTime;
         e.y += Math.sin(e.dir) * e.speed * deltaTime;
@@ -449,14 +477,22 @@ export class MeleeAttackSystem {
               
               e.pierceCount = (e.pierceCount || 0) + 1;
               if (e.pierceCount > (e.pierce || 0)) {
-                e.age = e.maxAge;
+                // 命中且穿刺耗尽：直接删除，不插地
+                e.age = e.maxAge + 1;
                 break;
               }
             }
           }
         }
+
+        // 飞行到达终点：插地
+        if (e.traveled >= e.targetDist) {
+          e.stuck = true;
+          e.stuckAge = 0;
+          continue;
+        }
       }
-      if (e.age >= e.maxAge) {
+      if (e.age >= e.maxAge && !e.stuck) {
         this.sectorSlashEffects.splice(i, 1);
       }
     }
@@ -519,29 +555,86 @@ export class MeleeAttackSystem {
         ctx.fill();
         
       } else if (e.type === 'arrow') {
-        const len = 20;
-        const tailX = e.x - Math.cos(e.dir) * len;
-        const tailY = e.y - Math.sin(e.dir) * len;
-        
-        ctx.beginPath();
-        ctx.moveTo(tailX, tailY);
-        ctx.lineTo(e.x, e.y);
-        ctx.strokeStyle = `rgba(255, 220, 150, ${alpha * 0.3})`;
-        ctx.lineWidth = 6;
-        ctx.lineCap = 'round';
-        ctx.stroke();
-        
-        ctx.beginPath();
-        ctx.moveTo(tailX, tailY);
-        ctx.lineTo(e.x, e.y);
-        ctx.strokeStyle = `rgba(255, 240, 200, ${alpha * 0.7})`;
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        
-        ctx.beginPath();
-        ctx.arc(e.x, e.y, 2, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
-        ctx.fill();
+        if (e.stuck) {
+          // 插地状态：箭竖直插地，箭头嵌入地面，只露出箭杆上部和尾羽
+          const stuckAlpha = Math.max(0, 1 - e.stuckAge / e.stuckMaxAge);
+          // 嵌入比例：随机 1/5 ~ 4/5，生成时固定
+          const embedRatio = e.embedRatio ?? 0.5;
+          const totalLen = 30;
+          const visibleLen = totalLen * (1 - embedRatio); // 露出地面的长度
+
+          // 等距视角下竖直插地：箭杆接近垂直，略带随机倾斜
+          // stuckAngle 是小幅随机偏转（±0.15rad），基准方向向上（-π/2）
+          const stuckDir = -Math.PI / 2 + e.stuckAngle;
+
+          // 地面接触点（箭头嵌入处）
+          const groundX = e.x;
+          const groundY = e.y;
+          // 露出部分的顶端（尾羽位置）
+          const tailX = groundX + Math.cos(stuckDir) * visibleLen;
+          const tailY = groundY + Math.sin(stuckDir) * visibleLen;
+
+          // 箭杆（只画露出地面的部分）
+          ctx.beginPath();
+          ctx.moveTo(groundX, groundY);
+          ctx.lineTo(tailX, tailY);
+          ctx.strokeStyle = `rgba(160, 120, 60, ${stuckAlpha * 0.9})`;
+          ctx.lineWidth = 2.5;
+          ctx.lineCap = 'round';
+          ctx.stroke();
+
+          // 尾羽（在顶端）
+          const featherLen = 7;
+          ctx.beginPath();
+          ctx.moveTo(tailX, tailY);
+          ctx.lineTo(tailX + Math.cos(stuckDir + Math.PI / 2) * featherLen * 0.6,
+                     tailY + Math.sin(stuckDir + Math.PI / 2) * featherLen * 0.6);
+          ctx.moveTo(tailX, tailY);
+          ctx.lineTo(tailX - Math.cos(stuckDir + Math.PI / 2) * featherLen * 0.6,
+                     tailY - Math.sin(stuckDir + Math.PI / 2) * featherLen * 0.6);
+          ctx.strokeStyle = `rgba(220, 200, 140, ${stuckAlpha * 0.8})`;
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        } else {
+          // 飞行中：更大的箭矢
+          const len = 32;
+          const tailX = e.x - Math.cos(e.dir) * len;
+          const tailY = e.y - Math.sin(e.dir) * len;
+
+          // 外层光晕
+          ctx.beginPath();
+          ctx.moveTo(tailX, tailY);
+          ctx.lineTo(e.x, e.y);
+          ctx.strokeStyle = `rgba(255, 220, 100, ${alpha * 0.25})`;
+          ctx.lineWidth = 10;
+          ctx.lineCap = 'round';
+          ctx.stroke();
+
+          // 箭杆光芒
+          ctx.beginPath();
+          ctx.moveTo(tailX, tailY);
+          ctx.lineTo(e.x, e.y);
+          ctx.strokeStyle = `rgba(255, 240, 180, ${alpha * 0.75})`;
+          ctx.lineWidth = 3.5;
+          ctx.stroke();
+
+          // 箭头亮点
+          ctx.beginPath();
+          ctx.arc(e.x, e.y, 3.5, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+          ctx.fill();
+
+          // 尾羽
+          const featherLen = 8;
+          ctx.beginPath();
+          ctx.moveTo(tailX, tailY);
+          ctx.lineTo(tailX - Math.cos(e.dir - 0.45) * featherLen, tailY - Math.sin(e.dir - 0.45) * featherLen);
+          ctx.moveTo(tailX, tailY);
+          ctx.lineTo(tailX - Math.cos(e.dir + 0.45) * featherLen, tailY - Math.sin(e.dir + 0.45) * featherLen);
+          ctx.strokeStyle = `rgba(255, 255, 200, ${alpha * 0.8})`;
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        }
       }
     }
     
