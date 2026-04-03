@@ -718,6 +718,42 @@ export class MeleeAttackSystem {
           const tailX = e.x - Math.cos(drawDir) * len;
           const tailY = e.y - Math.sin(drawDir) * len;
 
+          if (e.isLightning) {
+            // 闪电箭：蓝白色电弧
+            ctx.beginPath();
+            ctx.moveTo(tailX, tailY);
+            ctx.lineTo(e.x, e.y);
+            ctx.strokeStyle = `rgba(80, 180, 255, ${alpha * 0.35})`;
+            ctx.lineWidth = 8;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(tailX, tailY);
+            ctx.lineTo(e.x, e.y);
+            ctx.strokeStyle = `rgba(200, 240, 255, ${alpha * 0.9})`;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(e.x, e.y, 4, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+            ctx.fill();
+
+            // 电弧锯齿
+            ctx.beginPath();
+            ctx.moveTo(tailX, tailY);
+            for (let si = 1; si < 6; si++) {
+              const t = si / 6;
+              const mx = tailX + (e.x - tailX) * t + (Math.random() - 0.5) * 8;
+              const my = tailY + (e.y - tailY) * t + (Math.random() - 0.5) * 8;
+              ctx.lineTo(mx, my);
+            }
+            ctx.lineTo(e.x, e.y);
+            ctx.strokeStyle = `rgba(150, 220, 255, ${alpha * 0.6})`;
+            ctx.lineWidth = 1;
+            ctx.stroke();
+          } else {
           // 细光晕（轻微，不要太虚）
           ctx.beginPath();
           ctx.moveTo(tailX, tailY);
@@ -751,6 +787,7 @@ export class MeleeAttackSystem {
           ctx.strokeStyle = `rgba(230, 220, 190, ${alpha * 0.9})`;
           ctx.lineWidth = 1.5;
           ctx.stroke();
+          } // end isLightning else
         }
       }
     }

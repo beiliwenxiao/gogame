@@ -210,6 +210,55 @@ export class NetworkCombatSystem {
         const selfCxCS = transform.position.x;
         const selfCyCS = transform.position.y - selfHCS / 10;
 
+        // ── 多重射击：连续普攻5次，每次间隔0.5秒 ──
+        if (skill && skill.name === '多重射击') {
+            scene.skillCooldowns[skillId] = now + skill.cooldown * 1000;
+            let count = 0;
+            const fireOnce = () => {
+                if (!scene.playerEntity || scene.playerEntity.dead) return;
+                this.attackAllInRange();
+                count++;
+                if (count < 5) setTimeout(fireOnce, 500);
+            };
+            fireOnce();
+            return;
+        }
+
+        // ── 闪电箭：普攻1次，箭矢带闪电粒子特效 ──
+        if (skill && skill.name === '闪电箭') {
+            scene._lightningArrowActive = true; // 标记下次箭矢带闪电特效
+            scene.skillCooldowns[skillId] = now + skill.cooldown * 1000;
+            this.attackAllInRange();
+            return;
+        }
+
+        // ── 天降箭雨：两阶段释放 ──
+        if (skill && skill.name === '天降箭雨') {
+            // 第二阶段：已有待释放状态，再次触发 = 释放
+            if (scene._arrowRainPending) {
+                const pending = scene._arrowRainPending;
+                scene._arrowRainPending = null;
+                scene.skillRangeIndicator.clear();
+                // 检查是否在范围内
+                const pdx = pending.x - selfCxCS;
+                const pdy2d = (pending.y - selfCyCS) * 2;
+                const pdist = Math.sqrt(pdx * pdx + pdy2d * pdy2d);
+                if (pdist > (skill.range || 300)) {
+                    // 超出范围，取消
+                    return;
+                }
+                scene.ws.send('cast_skill_npc', { skill_id: skillId, target_id: 0, target_x: pending.x, target_y: pending.y });
+                scene.skillCooldowns[skillId] = now + skill.cooldown * 1000;
+                return;
+            }
+            // 第一阶段：进入选框模式，不倒计时
+            scene._arrowRainPending = { skillId, x: selfCxCS, y: selfCyCS };
+            scene._arrowRainSkill = skill;
+            // 显示持续虚线选框（duration 设很大，手动清除）
+            scene._arrowRainIndicatorActive = true;
+            return;
+        }
+
         // circle 类型技能（弓箭手 AOE）：以鼠标世界坐标为目标点
         if (skill && skill.area_type === 'circle' && scene.inputManager && scene.camera) {
             const mouseWorld = scene.inputManager.getMouseWorldPosition(scene.camera);
@@ -873,12 +922,19 @@ export class NetworkCombatSystem {
                 for (let ai = prevCount; ai < mas.sectorSlashEffects.length; ai++) {
                     const arrow = mas.sectorSlashEffects[ai];
                     if (arrow.type === 'arrow') {
-                        arrow.rangedTargets = pendingRangedTargets.slice(); // 每支箭独立副本
+                        arrow.rangedTargets = pendingRangedTargets.slice();
                         arrow.onHitCallback = (targetId, isNPC) => {
                             const msgType = isNPC ? 'attack_npc' : 'attack';
                             scene.ws.send(msgType, { target_id: targetId });
                         };
+                        // 闪电箭：标记箭矢带闪电特效
+                        if (scene._lightningArrowActive) {
+                            arrow.isLightning = true;
+                        }
                     }
+                }
+                if (scene._lightningArrowActive) scene._lightningArrowActive = false;
+            }
                 }
             }
         }

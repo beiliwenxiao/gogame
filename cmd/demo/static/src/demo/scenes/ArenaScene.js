@@ -113,6 +113,14 @@ export class ArenaScene extends BaseGameScene {
         this._whirlwindUntil = 0;
         this._whirlwindAreaSize = 0;
         this._whirlwindNextParticle = 0;
+
+        // 天降箭雨选框状态
+        this._arrowRainPending = null;   // { skillId, x, y }
+        this._arrowRainSkill = null;
+        this._arrowRainIndicatorActive = false;
+
+        // 闪电箭标记
+        this._lightningArrowActive = false;
     }
 
     /**
@@ -340,9 +348,55 @@ export class ArenaScene extends BaseGameScene {
         // 更新昏迷/恐惧转圈旋转角
         this.stunEffectRenderer.update(deltaTime);
 
+        // 天降箭雨选框：实时跟随鼠标，检测范围，左键释放/取消
+        if (this._arrowRainPending && this._arrowRainSkill && this.inputManager && this.camera) {
+            const mouseWorld = this.inputManager.getMouseWorldPosition(this.camera);
+            const skill = this._arrowRainSkill;
+            const selfT = this.playerEntity?.getComponent('transform');
+            const selfSprite = this.playerEntity?.getComponent('sprite');
+            const selfH = selfSprite?.height || 64;
+            const selfCx = selfT ? selfT.position.x : 0;
+            const selfCy = selfT ? selfT.position.y - selfH / 10 : 0;
+
+            if (mouseWorld) {
+                this._arrowRainPending.x = mouseWorld.x;
+                this._arrowRainPending.y = mouseWorld.y;
+            }
+
+            const pdx = this._arrowRainPending.x - selfCx;
+            const pdy2d = (this._arrowRainPending.y - selfCy) * 2;
+            const pdist = Math.sqrt(pdx * pdx + pdy2d * pdy2d);
+            const inRange = pdist <= (skill.range || 300);
+            const radius = skill.area_size || 60;
+
+            // 更新选框颜色
+            this.skillRangeIndicator.clear();
+            this.skillRangeIndicator.show({
+                areaType: 'circle',
+                rx: radius, ry: radius / 2,
+                targetX: this._arrowRainPending.x,
+                targetY: this._arrowRainPending.y,
+                color: inRange ? 'rgba(0, 220, 80, 0.9)' : 'rgba(255, 50, 50, 0.9)',
+                fillColor: inRange ? 'rgba(0, 220, 80, 0.08)' : 'rgba(255, 50, 50, 0.08)',
+                duration: 9999
+            });
+
+            // 左键点击：释放或取消
+            if (this.inputManager.isMouseClicked() && this.inputManager.getMouseButton() === 0) {
+                this.inputManager.markMouseClickHandled();
+                if (inRange) {
+                    this.networkCombat.castSkill(this._arrowRainPending.skillId);
+                } else {
+                    this._arrowRainPending = null;
+                    this._arrowRainSkill = null;
+                    this._arrowRainIndicatorActive = false;
+                    this.skillRangeIndicator.clear();
+                }
+            }
+        }
+
         // 旋风斩持续粒子（每秒触发一次；命中时由 onDamage 额外触发，共享防重复标志）
-        if (this._whirlwindUntil > 0 && this.playerEntity && !this.playerEntity.dead) {
-            const now = Date.now();
+        if (this._whirlwindUntil > 0 && this.playerEntity && !this.playerEntity.dead) {            const now = Date.now();
             if (now >= this._whirlwindUntil) {
                 this._whirlwindUntil = 0;
             } else if (now >= this._whirlwindNextParticle) {
@@ -1361,6 +1415,10 @@ export class ArenaScene extends BaseGameScene {
         this.groundDrops = [];
         this._whirlwindUntil = 0;
         this._whirlwindNextParticle = 0;
+        this._arrowRainPending = null;
+        this._arrowRainSkill = null;
+        this._arrowRainIndicatorActive = false;
+        this._lightningArrowActive = false;
         this._hideSoulOverlay();
         if (this.combatSystem) {
             this.combatSystem._arenaMode = false;

@@ -20,6 +20,9 @@ func (s *Store) SeedDefaultEquipment() error {
 		// 检查弓箭手技能是否已更新为闪电箭
 		var archerSkillCount int
 		s.db.QueryRow("SELECT COUNT(*) FROM skill_defs WHERE name='闪电箭'").Scan(&archerSkillCount)
+		// 检查多重射击是否已更新为 single 类型
+		var multiShotType string
+		s.db.QueryRow("SELECT area_type FROM skill_defs WHERE name='多重射击' LIMIT 1").Scan(&multiShotType)
 		// 检查防具防御值是否已更新（皮甲 defense >= 15）
 		var leatherDef int
 		s.db.QueryRow("SELECT defense FROM equipment_defs WHERE name='皮甲' LIMIT 1").Scan(&leatherDef)
@@ -37,7 +40,7 @@ func (s *Store) SeedDefaultEquipment() error {
 		var shadowBowMulti int
 		s.db.QueryRow("SELECT attack FROM equipment_defs WHERE name='暗影之弓' LIMIT 1").Scan(&shadowBowAtk)
 		s.db.QueryRow("SELECT multi_arrow FROM equipment_defs WHERE name='暗影之弓' LIMIT 1").Scan(&shadowBowMulti)
-		if hasIconID == 0 || skillVersion != "fan" || warcryDmg < 0.29 || archerSkillCount == 0 || leatherDef < 15 || ironArrowCount == 0 || bowRange > 50 || whirlwindCD < 14 || shadowBowAtk < 119 || shadowBowMulti != 2 {
+		if hasIconID == 0 || skillVersion != "fan" || warcryDmg < 0.29 || archerSkillCount == 0 || leatherDef < 15 || ironArrowCount == 0 || bowRange > 50 || whirlwindCD < 14 || shadowBowAtk < 119 || shadowBowMulti != 2 || multiShotType != "single" {
 			// 旧数据，删除重建
 			log.Println("检测到旧数据，重新初始化...")
 			s.db.Exec("DELETE FROM equipment_defs")
@@ -104,9 +107,9 @@ func (s *Store) SeedDefaultEquipment() error {
 		{Name: "战吼", Class: "warrior", Damage: 0.3, MPCost: 20, Cooldown: 20.0, Range: 0, AreaType: "ellipse", AreaSize: 0},
 		// 弓箭手技能
 		{Name: "射击", Class: "archer", Damage: 1.0, MPCost: 0, Cooldown: 0.6, Range: 200, AreaType: "single"},
-		{Name: "多重射击", Class: "archer", Damage: 0.8, MPCost: 20, Cooldown: 4.0, Range: 180, AreaType: "circle", AreaSize: 10},
-		{Name: "闪电箭", Class: "archer", Damage: 2.5, MPCost: 30, Cooldown: 6.0, Range: 250, AreaType: "circle", AreaSize: 20},
-		{Name: "天降箭雨", Class: "archer", Damage: 1.8, MPCost: 40, Cooldown: 8.0, Range: 300, AreaType: "circle", AreaSize: 30},
+		{Name: "多重射击", Class: "archer", Damage: 1.0, MPCost: 20, Cooldown: 4.0, Range: 300, AreaType: "single", AreaSize: 0},
+		{Name: "闪电箭", Class: "archer", Damage: 3.0, MPCost: 30, Cooldown: 6.0, Range: 300, AreaType: "single", AreaSize: 0},
+		{Name: "天降箭雨", Class: "archer", Damage: 2.0, MPCost: 40, Cooldown: 8.0, Range: 300, AreaType: "circle", AreaSize: 60},
 	}
 
 	for _, sk := range skills {

@@ -766,20 +766,6 @@ NPC 死亡后应立即从 `s.arena.npcs` map 中 `delete`，不要只设 `npc.De
 ### 属性列表的数据驱动模式
 `PlayerInfoPanel.render` 中属性列表是 `attributes` 数组，每项 `{label, value, color}`，循环渲染。新增属性只需 push 到数组，不需要改渲染逻辑。条件性属性（如弓箭手箭矢）用 `if (this.player.class === 'archer')` 守卫后 push。
 
-### 箭矢总数的跨组件统计
-箭矢分布在两个组件中，统计总数需同时遍历：
-- 副手：`equipment.getEquipment('offhand')` → `offhand.quantity`
-- 背包：`inventory.getAllItems()` 遍历 `slot.item.subType === 'ammo'` 累加 `slot.quantity`
-
-此统计逻辑在 `PlayerInfoPanel`（显示）和 `NetworkCombatSystem`（自动补充）中各有一份，箭矢来源变化时需同步修改。
-
-### 装备槽已有数量显示
-`renderEquipmentSlots` 中已有 `equippedItem.quantity` 的右下角小数字显示，但只显示当前装备槽数量，不含背包储备。
-
-### 后端 seed 数量与前端分配的配合
-前端 `loadBackendEquipments` 分配逻辑：副手取 `min(total, 99)`，剩余全部进背包（按 `maxStack: 99` 自动分组）。要实现"副手 1 捆 + 背包 N 捆"，后端 seed 需给 N+1 捆，前端分配逻辑不用动。
-
-
 ## 前端 onDamage "假死"判定 vs doStateSync 权威同步
 
 ### 问题链路
