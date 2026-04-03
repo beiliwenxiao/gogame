@@ -681,6 +681,7 @@ export class NetworkCombatSystem {
         }
         let attacked = false;
         let firstTargetTransform = null;
+        let pendingRangedTargets = null;
 
         // 获取攻击参数
         const sectorDir = mas ? mas.sectorDirection : 0;
@@ -770,7 +771,7 @@ export class NetworkCombatSystem {
 
             const dx = targetTransform.position.x - selfCx;
             const dy = (targetTransform.position.y - tH / 10) - selfCy;
-            const dy2d = dy * 2; // 还原 2.5D Y 轴压缩
+            const dy2d = dy * 2;
             const dist2d = Math.sqrt(dx * dx + dy2d * dy2d);
             if (dist2d > sectorRadius) continue;
 
@@ -781,16 +782,37 @@ export class NetworkCombatSystem {
                 while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
                 while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
                 if (Math.abs(angleDiff) > sectorHalfAngle) continue;
-            }
-            // 远程：只做距离判定，全方向都能攻击到
 
-            const msgType = isNPC ? 'attack_npc' : 'attack';
-            scene.ws.send(msgType, { target_id: id });
+                // 近战：立即发送攻击消息
+                const msgType = isNPC ? 'attack_npc' : 'attack';
+                scene.ws.send(msgType, { target_id: id });
+            } else {
+                // 远程：扇形角度判定（以鼠标方向为中心）
+                const mouseDir = isRanged && scene.inputManager && scene.camera
+                    ? (() => { const m = scene.inputManager.getMouseWorldPosition(scene.camera); return m ? Math.atan2(m.y - selfCy, m.x - selfCx) : sectorDir; })()
+                    : sectorDir;
+                const angle = Math.atan2(dy2d, dx);
+                let angleDiff = angle - mouseDir;
+                while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                // 弓箭手扇形半角：约30°
+                const archerHalfAngle = Math.PI / 6;
+                if (Math.abs(angleDiff) > archerHalfAngle) continue;
+
+                // 远程：不立即发消息，记录到 pendingRangedTargets，等箭矢碰撞时发送
+                if (!pendingRangedTargets) pendingRangedTargets = [];
+                pendingRangedTargets.push({ id, entity, isNPC, transform: targetTransform });
+            }
 
             if (!attacked) {
                 firstTargetTransform = targetTransform;
                 scene.selectedTarget = id;
             }
+            attacked = true;
+        }
+
+        // 弓箭手：pendingRangedTargets 有目标时也算 attacked
+        if (isRanged && pendingRangedTargets && pendingRangedTargets.length > 0 && !attacked) {
             attacked = true;
         }
 
@@ -840,11 +862,25 @@ export class NetworkCombatSystem {
                 dir = Math.atan2(dy, dx);
                 mas.sectorDirection = dir;
             }
+            const prevCount = mas.sectorSlashEffects.length;
             mas.spawnSectorSlashEffect(
                 playerCenter, dir,
                 playerCenter.x, playerCenter.y,
                 sectorRadius
             );
+            // 弓箭手：把待命中目标列表挂到新生成的每支箭矢上
+            if (isRanged && pendingRangedTargets && pendingRangedTargets.length > 0) {
+                for (let ai = prevCount; ai < mas.sectorSlashEffects.length; ai++) {
+                    const arrow = mas.sectorSlashEffects[ai];
+                    if (arrow.type === 'arrow') {
+                        arrow.rangedTargets = pendingRangedTargets.slice(); // 每支箭独立副本
+                        arrow.onHitCallback = (targetId, isNPC) => {
+                            const msgType = isNPC ? 'attack_npc' : 'attack';
+                            scene.ws.send(msgType, { target_id: targetId });
+                        };
+                    }
+                }
+            }
         }
 
         if (!attacked) { /* 范围内无目标 */ }

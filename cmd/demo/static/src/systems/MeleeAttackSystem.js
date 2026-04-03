@@ -513,6 +513,26 @@ export class MeleeAttackSystem {
             continue;
           }
         }
+
+        // 联网模式：检测箭矢与 rangedTargets 的碰撞，碰撞时触发伤害回调
+        if (e.rangedTargets && e.onHitCallback) {
+          const hitRadius = 30;
+          for (let ti = e.rangedTargets.length - 1; ti >= 0; ti--) {
+            const tgt = e.rangedTargets[ti];
+            if (tgt.entity.dead || tgt.entity.isDead) {
+              e.rangedTargets.splice(ti, 1);
+              continue;
+            }
+            const tt = tgt.transform || tgt.entity.getComponent('transform');
+            if (!tt) continue;
+            const hdx = e.x - tt.position.x;
+            const hdy = e.y - tt.position.y;
+            if (Math.sqrt(hdx * hdx + hdy * hdy) <= hitRadius) {
+              e.onHitCallback(tgt.id, tgt.isNPC);
+              e.rangedTargets.splice(ti, 1); // 每个目标只触发一次
+            }
+          }
+        }
         
         if (e.damage && this.combatSystem && !this._arenaMode) {
           const hitRadius = 20;
