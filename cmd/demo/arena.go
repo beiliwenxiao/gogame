@@ -1389,13 +1389,17 @@ func (s *DemoServer) npcAITick() {
 			npc.EnragedUntil = now + 30000 // 恐惧结束后激怒30秒，无视仇恨范围追击
 		}
 
-		// 1. 寻找最近的存活玩家
+		// 1. 寻找最近的存活玩家（使用 2.5D 椭圆距离，与前端判定一致）
 		var closest *PlayerSession
 		closestDist := math.MaxFloat64
 		for _, p := range alivePlayers {
-			d := distance(npc.X, npc.Y, p.x, p.y)
-			if d < closestDist {
-				closestDist = d
+			dx := npc.X - p.x
+			dy := npc.Y - p.y
+			// 2.5D 等距视角：Y 轴压缩 0.5，等效距离 = sqrt(dx² + (dy/0.5)²) / 2
+			// 即 sqrt(dx² + (dy*2)²) / 2，与 isInEllipseRange 判定一致
+			d2d := math.Sqrt(dx*dx + (dy*2)*(dy*2)) / 2
+			if d2d < closestDist {
+				closestDist = d2d
 				closest = p
 			}
 		}
@@ -1464,13 +1468,14 @@ func (s *DemoServer) npcAITick() {
 				})
 			}
 		} else {
-			// 移动靠近目标
+			// 移动靠近目标（使用实际坐标差移动，但停止距离基于 2.5D 距离）
 			dx := closest.x - npc.X
 			dy := closest.y - npc.Y
-			d := math.Sqrt(dx*dx + dy*dy)
+			d := math.Sqrt(dx*dx + dy*dy) // 实际移动用欧几里得距离
 			moveSpeed := npc.Speed * dt
-			if moveSpeed > d-npc.AttackRange*0.8 {
-				moveSpeed = d - npc.AttackRange*0.8
+			stopDist := npc.AttackRange * 0.8
+			if moveSpeed > d-stopDist {
+				moveSpeed = d - stopDist
 			}
 			if moveSpeed > 0 {
 				newX := npc.X + (dx/d)*moveSpeed

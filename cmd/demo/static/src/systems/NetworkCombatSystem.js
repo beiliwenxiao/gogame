@@ -789,7 +789,7 @@ export class NetworkCombatSystem {
             } else {
                 // 远程：扇形角度判定（以鼠标方向为中心）
                 const mouseDir = isRanged && scene.inputManager && scene.camera
-                    ? (() => { const m = scene.inputManager.getMouseWorldPosition(scene.camera); return m ? Math.atan2(m.y - selfCy, m.x - selfCx) : sectorDir; })()
+                    ? (() => { const m = scene.inputManager.getMouseWorldPosition(scene.camera); return m ? Math.atan2((m.y - selfCy) * 2, m.x - selfCx) : sectorDir; })()
                     : sectorDir;
                 const angle = Math.atan2(dy2d, dx);
                 let angleDiff = angle - mouseDir;

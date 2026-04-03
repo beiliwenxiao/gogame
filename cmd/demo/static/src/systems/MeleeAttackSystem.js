@@ -100,10 +100,10 @@ export class MeleeAttackSystem {
     // 更新刀光/箭光特效（使用真实 deltaTime）
     this.updateSectorSlashEffects(deltaTime);
 
-    // 计算鼠标方向角度
+    // 计算鼠标方向角度（2.5D 等距视角：Y 轴 ×2 还原压缩）
     const dx = mouseWorldPos.x - playerCenter.x;
     const dy = mouseWorldPos.y - playerCenter.y;
-    this.sectorDirection = Math.atan2(dy, dx);
+    this.sectorDirection = Math.atan2(dy * 2, dx);
 
     // 判断近战/远程
     this.sectorIsRanged = this.checkIsRangedWeapon();
