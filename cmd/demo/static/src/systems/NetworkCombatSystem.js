@@ -476,7 +476,7 @@ export class NetworkCombatSystem {
                     scene._whirlwindNextParticle = now + 1000; // 重置定时器，避免1秒内重复
                     const t = scene.playerEntity?.getComponent('transform');
                     if (t) {
-                        SkillParticleEffects.emitWhirlwind(scene.particleSystem, t.position.x, t.position.y, scene._whirlwindAreaSize || 80);
+                        SkillParticleEffects.emitWhirlwind(scene.particleSystem, t.position.x, t.position.y, scene._whirlwindAreaSize || 80, scene.meleeAttackSystem);
                     }
                 }
             }

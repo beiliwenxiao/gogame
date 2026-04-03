@@ -16,14 +16,14 @@ export class SkillParticleEffects {
      */
     static emit(particleSystem, skillName, params) {
         if (!particleSystem) return;
-        const { casterX = 0, casterY = 0, targetX = 0, targetY = 0, areaSize = 80 } = params;
+        const { casterX = 0, casterY = 0, targetX = 0, targetY = 0, areaSize = 80, mas = null } = params;
 
         switch (skillName) {
             case '猛击':
                 SkillParticleEffects._emitSlash(particleSystem, targetX, targetY);
                 break;
             case '旋风斩':
-                SkillParticleEffects.emitWhirlwind(particleSystem, casterX, casterY, areaSize);
+                SkillParticleEffects.emitWhirlwind(particleSystem, casterX, casterY, areaSize, mas);
                 break;
             case '战吼':
                 SkillParticleEffects._emitWarCry(particleSystem, casterX, casterY);
@@ -80,29 +80,71 @@ export class SkillParticleEffects {
     }
 
     /**
-     * 旋风斩：旋转风刃粒子（可单独调用，用于持续 tick）
+     * 旋风斩：旋转刀光 + 风气流（可单独调用，用于持续 tick）
      * @param {Object} ps - ParticleSystem
      * @param {number} cx - 中心 X
      * @param {number} cy - 中心 Y
      * @param {number} radius - 旋风半径
+     * @param {Object} [mas] - MeleeAttackSystem 实例（可选，有则生成扇形刀光）
      */
-    static emitWhirlwind(ps, cx, cy, radius) {
-        for (let i = 0; i < 30; i++) {
-            const angle = (i / 30) * Math.PI * 2;
-            const r = radius * (0.4 + Math.random() * 0.6);
-            ps.emit({ position: { x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r * 0.5 },
-                velocity: { x: Math.cos(angle + Math.PI / 2) * 120, y: Math.sin(angle + Math.PI / 2) * 60 },
-                life: 600, size: 3 + Math.random() * 4, color: '#aaddff', alpha: 0.85, gravity: 0, friction: 0.93 });
+    static emitWhirlwind(ps, cx, cy, radius, mas = null) {
+        const rx = radius;
+        const ry = radius * 0.5;
+
+        // ── 扇形刀光：6条均匀分布在圆周，沿切线方向 ──
+        if (mas) {
+            const bladeCount = 6;
+            for (let i = 0; i < bladeCount; i++) {
+                const angle = (i / bladeCount) * Math.PI * 2;
+                // 刀光中心在圆周上
+                const slashCx = cx + Math.cos(angle) * rx;
+                const slashCy = cy + Math.sin(angle) * ry;
+                // 切线方向（逆时针）
+                const dir = angle + Math.PI / 2;
+                mas.sectorSlashEffects.push({
+                    cx: slashCx,
+                    cy: slashCy,
+                    radius: radius * 0.45,
+                    dir,
+                    halfAngle: Math.PI / 5,   // 约36°，细长刀光
+                    age: 0,
+                    maxAge: 0.2,
+                    type: 'slash',
+                    damage: 0,
+                    hitEntities: [],
+                    isNPC: false
+                });
+            }
         }
-        for (let i = 0; i < 16; i++) {
-            const angle = (i / 16) * Math.PI * 2 + Math.random() * 0.3;
-            const r = radius * 0.3;
-            ps.emit({ position: { x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r * 0.5 },
-                velocity: { x: Math.cos(angle + Math.PI / 2) * 160, y: Math.sin(angle + Math.PI / 2) * 80 },
-                life: 400, size: 2 + Math.random() * 2, color: '#ffffff', alpha: 0.9, gravity: 0, friction: 0.90 });
+
+        // ── 风气流：沿圆周内侧螺旋扩散 ──
+        const windCount = 28;
+        for (let i = 0; i < windCount; i++) {
+            const angle = (i / windCount) * Math.PI * 2 + Math.random() * 0.3;
+            const r = rx * (0.2 + Math.random() * 0.7);
+            const sx = cx + Math.cos(angle) * r;
+            const sy = cy + Math.sin(angle) * r * 0.5;
+            const tx = -Math.sin(angle);
+            const ty =  Math.cos(angle) * 0.5;
+            const speed = 60 + Math.random() * 60;
+            ps.emit({
+                position: { x: sx, y: sy },
+                velocity: { x: tx * speed + Math.cos(angle) * 12, y: ty * speed + Math.sin(angle) * 6 },
+                life: 250 + Math.random() * 150, size: 1 + Math.random() * 1.5,
+                color: '#c8e8ff', alpha: 0.25 + Math.random() * 0.2,
+                gravity: -5, friction: 0.94
+            });
         }
-        ps.emitBurst({ position: { x: cx, y: cy }, velocity: { x: 0, y: 0 }, life: 500, size: 4, color: '#998866', alpha: 0.5, gravity: -10, friction: 0.92 },
-            10, { velocityRange: { min: 30, max: 80 }, angleRange: { min: 0, max: Math.PI * 2 }, sizeRange: { min: 3, max: 6 }, lifeRange: { min: 300, max: 600 } });
+
+        // ── 中心气旋：向上飘散的细小白点 ──
+        for (let i = 0; i < 8; i++) {
+            ps.emit({
+                position: { x: cx + (Math.random() - 0.5) * rx * 0.5, y: cy + (Math.random() - 0.5) * ry * 0.5 },
+                velocity: { x: (Math.random() - 0.5) * 30, y: -20 - Math.random() * 20 },
+                life: 250, size: 1 + Math.random(),
+                color: '#ffffff', alpha: 0.45, gravity: 0, friction: 0.92
+            });
+        }
     }
 
     /** 战吼：红色恐惧冲击波 */

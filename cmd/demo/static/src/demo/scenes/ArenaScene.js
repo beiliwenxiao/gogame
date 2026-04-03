@@ -350,7 +350,7 @@ export class ArenaScene extends BaseGameScene {
                 this._whirlwindLastParticleTime = now;
                 const t = this.playerEntity.getComponent('transform');
                 if (t) {
-                    SkillParticleEffects.emitWhirlwind(this.particleSystem, t.position.x, t.position.y, this._whirlwindAreaSize);
+                    SkillParticleEffects.emitWhirlwind(this.particleSystem, t.position.x, t.position.y, this._whirlwindAreaSize, this.meleeAttackSystem);
                 }
             }
         }
@@ -1061,7 +1061,7 @@ export class ArenaScene extends BaseGameScene {
      * 发射旋风斩粒子（委托 SkillParticleEffects）
      */
     _emitWhirlwindParticles(cx, cy, radius) {
-        SkillParticleEffects.emitWhirlwind(this.particleSystem, cx, cy, radius);
+        SkillParticleEffects.emitWhirlwind(this.particleSystem, cx, cy, radius, this.meleeAttackSystem);
     }
 
     /** 渲染 NPC 死亡白骨（委托 BoneCorpseRenderer） */
@@ -1266,7 +1266,7 @@ export class ArenaScene extends BaseGameScene {
      * 创建技能粒子效果（委托 SkillParticleEffects）
      */
     createSkillParticles(skillName, params) {
-        SkillParticleEffects.emit(this.particleSystem, skillName, params);
+        SkillParticleEffects.emit(this.particleSystem, skillName, { ...params, mas: this.meleeAttackSystem });
         // 旋风斩：额外设置持续状态
         if (skillName === '旋风斩' && params.isSelf) {
             const now = Date.now();
