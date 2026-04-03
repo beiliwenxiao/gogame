@@ -600,7 +600,7 @@ export class MeleeAttackSystem {
         ctx.quadraticCurveTo(e.cx + Math.cos(midAngle) * (sweepR + maxThick + 5), e.cy + Math.sin(midAngle) * (sweepR + maxThick + 5), tipEndX, tipEndY);
         ctx.quadraticCurveTo(e.cx + Math.cos(midAngle) * (sweepR - maxThick * 0.4 - 3), e.cy + Math.sin(midAngle) * (sweepR - maxThick * 0.4 - 3), tipStartX, tipStartY);
         ctx.closePath();
-        ctx.fillStyle = `rgba(200, 230, 255, ${alpha * 0.2})`;
+        ctx.fillStyle = e.isNPC ? `rgba(255, 180, 80, ${alpha * 0.2})` : `rgba(200, 230, 255, ${alpha * 0.2})`;
         ctx.fill();
         
         // 中层光芒
@@ -609,7 +609,7 @@ export class MeleeAttackSystem {
         ctx.quadraticCurveTo(e.cx + Math.cos(midAngle) * (sweepR + maxThick + 2), e.cy + Math.sin(midAngle) * (sweepR + maxThick + 2), tipEndX, tipEndY);
         ctx.quadraticCurveTo(e.cx + Math.cos(midAngle) * (sweepR - maxThick * 0.3), e.cy + Math.sin(midAngle) * (sweepR - maxThick * 0.3), tipStartX, tipStartY);
         ctx.closePath();
-        ctx.fillStyle = `rgba(220, 240, 255, ${alpha * 0.5})`;
+        ctx.fillStyle = e.isNPC ? `rgba(255, 120, 40, ${alpha * 0.5})` : `rgba(220, 240, 255, ${alpha * 0.5})`;
         ctx.fill();
         
         // 内层白色核心
@@ -618,7 +618,7 @@ export class MeleeAttackSystem {
         ctx.quadraticCurveTo(outerMidX, outerMidY, tipEndX, tipEndY);
         ctx.quadraticCurveTo(innerMidX, innerMidY, tipStartX, tipStartY);
         ctx.closePath();
-        ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.8})`;
+        ctx.fillStyle = e.isNPC ? `rgba(255, 200, 100, ${alpha * 0.8})` : `rgba(255, 255, 255, ${alpha * 0.8})`;
         ctx.fill();
         
       } else if (e.type === 'arrow') {

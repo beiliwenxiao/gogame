@@ -997,6 +997,15 @@ export class ArenaScene extends BaseGameScene {
         // 技能范围虚线（跟随玩家，始终在最上层）
         this.skillRangeIndicator.render(ctx, this._getFootCenter());
 
+        // NPC 武器攻击动画（已改用刀光特效，EnemyWeaponRenderer 已禁用）
+        // if (this.enemyWeaponRenderer) {
+        //     for (const entity of this.npcEntities.values()) {
+        //         if (!entity.dead && !entity.isDead) {
+        //             this.enemyWeaponRenderer.render(ctx, entity, this.playerEntity);
+        //         }
+        //     }
+        // }
+
         // 昏迷/恐惧转圈效果（在所有实体上层绘制）
         const allEntities = [
             ...(this.playerEntity ? [this.playerEntity] : []),

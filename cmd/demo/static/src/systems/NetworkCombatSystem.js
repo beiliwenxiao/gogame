@@ -386,8 +386,47 @@ export class NetworkCombatSystem {
             if (!attackerNPC || attackerNPC.dead || attackerNPC.isDead) {
                 return;
             }
+            // NPC 攻击特效：在目标位置触发打击粒子
+            const targetForFx = data.target_id === scene.selfId
+                ? scene.playerEntity
+                : scene.remotePlayers.get(data.target_id);
+            if (targetForFx && scene.particleSystem) {
+                const t = targetForFx.getComponent('transform');
+                if (t) {
+                    SkillParticleEffects.emitNPCHit(scene.particleSystem, t.position.x, t.position.y - 20, data.is_crit);
+                }
+            }
+            // NPC 武器攻击动画（已禁用 EnemyWeaponRenderer，改用刀光特效）
+            // if (scene.enemyWeaponRenderer && targetForFx) {
+            //     const t = targetForFx.getComponent('transform');
+            //     if (t) scene.enemyWeaponRenderer.startAttack(attackerNPC, t.position);
+            // }
+            // NPC 刀光特效：复用玩家近战光刃
+            if (scene.meleeAttackSystem && targetForFx) {
+                const npcT = attackerNPC.getComponent('transform');
+                const tgtT = targetForFx.getComponent('transform');
+                if (npcT && tgtT) {
+                    const dx = tgtT.position.x - npcT.position.x;
+                    const dy = tgtT.position.y - npcT.position.y;
+                    const dir = Math.atan2(dy, dx);
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const radius = Math.min(dist * 0.7, 80);
+                    scene.meleeAttackSystem.sectorSlashEffects.push({
+                        cx: npcT.position.x,
+                        cy: npcT.position.y,
+                        radius,
+                        dir,
+                        halfAngle: Math.PI / 4,
+                        age: 0,
+                        maxAge: 0.22,
+                        type: 'slash',
+                        damage: 0,
+                        hitEntities: [],
+                        isNPC: true   // 标记为 NPC 刀光，颜色略有区别
+                    });
+                }
+            }
         }
-
         let targetEntity;
         if (data.target_is_npc) {
             targetEntity = scene.npcEntities.get(data.target_id);

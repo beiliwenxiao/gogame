@@ -40,9 +40,38 @@ export class SkillParticleEffects {
         }
     }
 
+    /**
+     * NPC 近战打击特效：橙红色冲击 + 暗色残影
+     * @param {Object} ps - ParticleSystem
+     * @param {number} tx - 目标 X
+     * @param {number} ty - 目标 Y
+     * @param {boolean} isCrit - 是否暴击
+     */
+    static emitNPCHit(ps, tx, ty, isCrit = false) {
+        if (!ps) return;
+        // 主冲击：橙红色放射
+        const mainColor = isCrit ? '#ff6600' : '#cc4400';
+        const count = isCrit ? 18 : 12;
+        ps.emitBurst(
+            { position: { x: tx, y: ty }, velocity: { x: 0, y: 0 }, life: 450, size: 5, color: mainColor, alpha: 0.9, gravity: 30, friction: 0.88 },
+            count, { velocityRange: { min: 50, max: 130 }, angleRange: { min: 0, max: Math.PI * 2 }, sizeRange: { min: 3, max: 7 }, lifeRange: { min: 300, max: 500 } }
+        );
+        // 暗色残影
+        ps.emitBurst(
+            { position: { x: tx, y: ty }, velocity: { x: 0, y: 0 }, life: 300, size: 3, color: '#441100', alpha: 0.6, gravity: 0, friction: 0.92 },
+            8, { velocityRange: { min: 20, max: 60 }, angleRange: { min: 0, max: Math.PI * 2 }, sizeRange: { min: 2, max: 4 }, lifeRange: { min: 200, max: 350 } }
+        );
+        // 暴击时加白色闪光
+        if (isCrit) {
+            ps.emitBurst(
+                { position: { x: tx, y: ty }, velocity: { x: 0, y: 0 }, life: 200, size: 6, color: '#ffffff', alpha: 1.0, gravity: 0, friction: 0.82 },
+                10, { velocityRange: { min: 80, max: 160 }, angleRange: { min: 0, max: Math.PI * 2 }, sizeRange: { min: 3, max: 6 }, lifeRange: { min: 150, max: 250 } }
+            );
+        }
+    }
+
     /** 猛击：血色溅射 */
-    static _emitSlash(ps, tx, ty) {
-        ps.emitBurst({ position: { x: tx, y: ty }, velocity: { x: 0, y: 0 }, life: 600, size: 6, color: '#cc0000', alpha: 0.95, gravity: 80, friction: 0.90 },
+    static _emitSlash(ps, tx, ty) {        ps.emitBurst({ position: { x: tx, y: ty }, velocity: { x: 0, y: 0 }, life: 600, size: 6, color: '#cc0000', alpha: 0.95, gravity: 80, friction: 0.90 },
             15, { velocityRange: { min: 60, max: 150 }, angleRange: { min: 0, max: Math.PI * 2 }, sizeRange: { min: 4, max: 8 }, lifeRange: { min: 400, max: 700 } });
         ps.emitBurst({ position: { x: tx, y: ty }, velocity: { x: 0, y: 0 }, life: 400, size: 3, color: '#880000', alpha: 0.7, gravity: 20, friction: 0.95 },
             12, { velocityRange: { min: 20, max: 80 }, angleRange: { min: 0, max: Math.PI * 2 }, sizeRange: { min: 2, max: 5 }, lifeRange: { min: 300, max: 500 } });
