@@ -90,12 +90,8 @@ export class SkillRangeIndicator {
                 ctx.beginPath();
                 ctx.moveTo(cx, cy);
                 for (let i = 0; i <= steps; i++) {
-                    // direction 是 2.5D 角度，转为屏幕坐标：X 不变，Y 除以 2
                     const a = (ind.direction - halfAngle) + (i / steps) * halfAngle * 2;
-                    const sx = Math.cos(a);
-                    const sy = Math.sin(a) * 0.5; // 等距视角 Y 轴压缩
-                    const len = Math.sqrt(sx * sx + sy * sy);
-                    ctx.lineTo(cx + (sx / len) * ind.rx, cy + (sy / len) * ind.rx);
+                    ctx.lineTo(cx + Math.cos(a) * ind.rx, cy + Math.sin(a) * ind.ry);
                 }
                 ctx.closePath();
                 ctx.fill();

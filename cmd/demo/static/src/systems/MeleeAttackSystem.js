@@ -839,7 +839,7 @@ export class MeleeAttackSystem {
     const flashAlpha = Math.max(0, this.sectorAttackFlash / 0.2);
     
     if (this.sectorIsRanged) {
-      // 远程：扇形范围指示器（和近战一样的扇形，颜色区分）
+      // 远程：扇形范围指示器
       const rx = r;
       const ry = r / 2;
       const steps = 32;
@@ -852,11 +852,7 @@ export class MeleeAttackSystem {
         ctx.lineTo(cx + Math.cos(a) * rx, cy + Math.sin(a) * ry);
       }
       ctx.closePath();
-      if (flashAlpha > 0) {
-        ctx.fillStyle = `rgba(100, 200, 100, ${0.12 + flashAlpha * 0.4})`;
-      } else {
-        ctx.fillStyle = 'rgba(100, 200, 100, 0.12)';
-      }
+      ctx.fillStyle = flashAlpha > 0 ? `rgba(100, 200, 100, ${0.12 + flashAlpha * 0.4})` : 'rgba(100, 200, 100, 0.12)';
       ctx.fill();
 
       // 描边
@@ -887,11 +883,7 @@ export class MeleeAttackSystem {
         ctx.lineTo(cx + Math.cos(a) * rx, cy + Math.sin(a) * ry);
       }
       ctx.closePath();
-      if (flashAlpha > 0) {
-        ctx.fillStyle = `rgba(255, 100, 100, ${0.12 + flashAlpha * 0.4})`;
-      } else {
-        ctx.fillStyle = 'rgba(255, 100, 100, 0.12)';
-      }
+      ctx.fillStyle = flashAlpha > 0 ? `rgba(255, 100, 100, ${0.12 + flashAlpha * 0.4})` : 'rgba(255, 100, 100, 0.12)';
       ctx.fill();
 
       // 描边
