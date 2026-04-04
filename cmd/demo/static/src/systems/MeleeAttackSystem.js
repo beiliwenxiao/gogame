@@ -573,12 +573,14 @@ export class MeleeAttackSystem {
         }
 
         // 飞行到达终点或超时：插地
-        if (!e.attached && (e.traveled >= e.targetDist || e.age >= e.maxAge)) {
+        // 雨箭：到达 groundY 时插地
+        const hitGround = e.isRainArrow ? e.y >= e.groundY : false;
+        if (!e.attached && (e.traveled >= e.targetDist || e.age >= e.maxAge || hitGround)) {
+          if (e.isRainArrow && hitGround) e.y = e.groundY; // 精确落地
           e.stuck = true;
           e.stuckAge = 0;
           continue;
-        }
-      }
+        }      }
       if (e.age >= e.maxAge && !e.stuck && !e.attached) {
         this.sectorSlashEffects.splice(i, 1);
       }

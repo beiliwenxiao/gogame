@@ -680,6 +680,59 @@ export class NetworkCombatSystem {
                             color: circleColor, fillColor: circleFill,
                             duration: 1.2
                         });
+
+                        // 天降箭雨：启动持续落箭（每0.5秒一批，持续8秒）
+                        if (data.skill_name === '天降箭雨' && scene.meleeAttackSystem) {
+                            const rainX = data.target_x;
+                            const rainY = data.target_y;
+                            const rainRadius = data.area_size || 60;
+                            const equipment2 = scene.playerEntity.getComponent('equipment');
+                            const weapon2 = equipment2 ? equipment2.getEquipment('mainhand') : null;
+                            const multiArrow = (weapon2?.multiArrow || 0) + 1; // 普攻箭矢数
+                            const rainCount = multiArrow * 10; // 10倍
+                            let ticks = 0;
+                            const maxTicks = 16; // 8秒 / 0.5秒 = 16次
+                            const spawnBatch = () => {
+                                if (!scene.meleeAttackSystem || ticks >= maxTicks) return;
+                                ticks++;
+                                for (let i = 0; i < rainCount; i++) {
+                                    // 随机落点在椭圆范围内
+                                    const a = Math.random() * Math.PI * 2;
+                                    const r = Math.sqrt(Math.random()); // 均匀分布
+                                    const tx = rainX + Math.cos(a) * rainRadius * r;
+                                    const ty = rainY + Math.sin(a) * (rainRadius * 0.5) * r;
+                                    // 从上方高处落下
+                                    const startHeight = 180 + Math.random() * 80;
+                                    const delay = Math.random() * 400; // 0~400ms 随机延迟，错开落点
+                                    setTimeout(() => {
+                                        if (!scene.meleeAttackSystem) return;
+                                        scene.meleeAttackSystem.sectorSlashEffects.push({
+                                            type: 'arrow',
+                                            x: tx + (Math.random() - 0.5) * 20,
+                                            y: ty - startHeight,
+                                            dir: Math.PI / 2,       // 向下
+                                            renderDir: Math.PI / 2,
+                                            speed: 0,
+                                            vy: 380 + Math.random() * 80, // 向下初速度
+                                            gravity: 60,
+                                            friction: 1,
+                                            targetDist: startHeight + 20,
+                                            traveled: 0,
+                                            age: 0,
+                                            maxAge: (startHeight + 20) / 400 + 0.3,
+                                            damage: 0, pierce: 0, pierceCount: 0, hitEntities: [],
+                                            stuck: false, stuckAge: 0, stuckMaxAge: 4,
+                                            stuckAngle: (Math.random() - 0.5) * 0.25,
+                                            embedRatio: 0.3 + Math.random() * 0.4,
+                                            isRainArrow: true,
+                                            groundY: ty  // 落地目标 Y
+                                        });
+                                    }, delay);
+                                }
+                                if (ticks < maxTicks) setTimeout(spawnBatch, 500);
+                            };
+                            spawnBatch();
+                        }
                     }
                 }
             }
@@ -934,8 +987,6 @@ export class NetworkCombatSystem {
                     }
                 }
                 if (scene._lightningArrowActive) scene._lightningArrowActive = false;
-            }
-                }
             }
         }
 
