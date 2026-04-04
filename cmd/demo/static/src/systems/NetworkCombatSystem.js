@@ -549,11 +549,8 @@ export class NetworkCombatSystem {
             if (stats) {
                 stats.hp = data.target_hp;
                 stats.maxHp = data.target_max_hp;
-                if (data.target_is_npc && stats.hp <= 0) {
-                    targetEntity.dead = true;
-                    targetEntity.isDead = true;
-                    targetEntity.isDying = true;
-                }
+                // 不在 onDamage 里提前假死判定——等 npc_died 消息才真正标记死亡
+                // 提前假死会导致前端不再攻击该 NPC，但后端 NPC 可能还活着
             }
 
             // 浮动伤害文字

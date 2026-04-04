@@ -396,6 +396,7 @@ export class MultiplayerManager {
                     if (npc.max_hp !== undefined) stats.maxHp = npc.max_hp;
                 }
                 if (npc.dead) {
+                    entity.dead = true;
                     entity.isDead = true;
                     entity.isDying = true;
                     if (sceneRef.selectedTarget === npc.id) sceneRef.selectedTarget = null;
