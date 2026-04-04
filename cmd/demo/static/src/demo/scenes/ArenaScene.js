@@ -418,7 +418,7 @@ export class ArenaScene extends BaseGameScene {
             return b.life > 0;
         });
 
-        // 更新地面掉落物品（倒计时 + 按E键/左键拾取）
+        // 更新地面掉落物品（倒计时 + 按E键/左键批量拾取）
         if (this.playerEntity && !this.playerEntity.dead && this.inputManager) {
             const pt = this.playerEntity.getComponent('transform');
             if (pt) {
@@ -426,26 +426,45 @@ export class ArenaScene extends BaseGameScene {
                 const ePressed = this.inputManager.isKeyPressed('e') || this.inputManager.isKeyPressed('E');
                 const leftClicked = this.inputManager.isMouseClicked() && this.inputManager.getMouseButton() === 0;
                 if (ePressed || leftClicked) {
-                    let nearest = null, nearestDist = 60;
+                    // 拾取半径 = 玩家身高
+                    const sprite = this.playerEntity.getComponent('sprite');
+                    const pickRadius = sprite?.height || 64;
+
+                    // 收集范围内所有未拾取物品
+                    const inRange = [];
                     for (const drop of this.groundDrops) {
                         if (drop.picked) continue;
                         const dx = drop.x - px, dy = drop.y - py;
-                        const dist = Math.sqrt(dx * dx + dy * dy);
-                        if (dist < nearestDist) {
-                            if (leftClicked) {
-                                const mouseWorld = this.inputManager.getMouseWorldPosition(this.camera);
-                                if (mouseWorld) {
-                                    const mdx = drop.x - mouseWorld.x, mdy = drop.y - mouseWorld.y;
-                                    if (Math.sqrt(mdx * mdx + mdy * mdy) > 30) continue;
-                                }
-                            }
-                            nearest = drop;
-                            nearestDist = dist;
+                        if (Math.sqrt(dx * dx + dy * dy) <= pickRadius) {
+                            inRange.push(drop);
                         }
                     }
-                    if (nearest) {
-                        GroundDropPickupSystem.pickup(this.playerEntity, nearest, this.floatingTextManager);
-                        if (leftClicked) this.inputManager.markMouseClickHandled();
+
+                    // 批量拾取，飘字依次延迟120ms展示
+                    inRange.forEach((drop, idx) => {
+                        GroundDropPickupSystem.pickup(this.playerEntity, drop, null);
+                        const dropName = drop.dropName || drop.dropType || '物品';
+                        const count = drop.dropCount || 1;
+                        const color = drop.dropType === 'health_potion' ? '#ff4444'
+                            : drop.dropType === 'mana_potion' ? '#4488ff'
+                            : drop.dropType?.includes('arrow') ? '#88ccff'
+                            : '#ffffff';
+                        setTimeout(() => {
+                            if (this.floatingTextManager && this.playerEntity) {
+                                const t = this.playerEntity.getComponent('transform');
+                                if (t) {
+                                    this.floatingTextManager.addText(
+                                        t.position.x + (Math.random() - 0.5) * 20,
+                                        t.position.y - 20 - idx * 16,
+                                        `+${count} ${dropName}`, color
+                                    );
+                                }
+                            }
+                        }, idx * 120);
+                    });
+
+                    if (inRange.length > 0 && leftClicked) {
+                        this.inputManager.markMouseClickHandled();
                     }
                 }
             }
