@@ -210,7 +210,7 @@ export class NetworkCombatSystem {
         const selfCxCS = transform.position.x;
         const selfCyCS = transform.position.y - selfHCS / 10;
 
-        // ── 多重射击：5波次，以普攻力度作为技能发射，不消耗武器冷却 ──
+        // ── 多重射击：5波次，每波等同普通攻击（前端碰撞判定 → attack_npc → 后端伤害） ──
         if (skill && skill.name === '多重射击') {
             scene.skillCooldowns[skillId] = now + skill.cooldown * 1000;
             const mas = scene.meleeAttackSystem;
@@ -225,7 +225,7 @@ export class NetworkCombatSystem {
                 const cx = t.position.x;
                 const cy = t.position.y - h / 10;
 
-                // 鼠标方向
+                // 鼠标方向（2.5D）
                 let dir = mas ? mas.sectorDirection : 0;
                 if (scene.inputManager && scene.camera) {
                     const mw = scene.inputManager.getMouseWorldPosition(scene.camera);
@@ -237,8 +237,10 @@ export class NetworkCombatSystem {
                 const wep = eq?.getEquipment('mainhand');
                 const attackDist = wep?.attackDistance || 250;
                 const multiArrow = wep?.multiArrow || 0;
+                const archerHalfAngle = Math.PI / 6; // 30°扇形
 
-                // 找范围内目标，发 cast_skill_npc（伤害由后端按 skill.Damage=1.0 计算）
+                // 收集扇形内目标（与普通攻击一致）
+                const pendingTargets = [];
                 const allTargets = [
                     ...Array.from(scene.npcEntities.entries()).map(([id, e]) => ({ id, entity: e, isNPC: true })),
                     ...Array.from(scene.remotePlayers.entries()).map(([id, e]) => ({ id, entity: e, isNPC: false }))
@@ -249,15 +251,48 @@ export class NetworkCombatSystem {
                     if (!tt) continue;
                     const dx = tt.position.x - cx;
                     const dy = (tt.position.y - cy) * 2;
-                    if (Math.sqrt(dx * dx + dy * dy) > attackDist) continue;
-                    scene.ws.send(isNPC ? 'cast_skill_npc' : 'cast_skill', {
-                        skill_id: skillId, target_id: id,
-                        target_x: tt.position.x, target_y: tt.position.y
-                    });
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist > attackDist) continue;
+                    // 扇形角度判定
+                    const angle = Math.atan2(dy, dx);
+                    let angleDiff = angle - dir;
+                    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                    if (Math.abs(angleDiff) > archerHalfAngle) continue;
+                    pendingTargets.push({ id, entity, isNPC, transform: tt });
                 }
 
-                // 箭矢视觉特效（不消耗武器冷却）
-                if (mas) {
+                // 生成箭矢，挂上碰撞回调（与普通攻击完全一致）
+                if (mas && pendingTargets.length > 0) {
+                    const totalArrows = 1 + multiArrow;
+                    const spread = 0.18;
+                    const prevCount = mas.sectorSlashEffects.length;
+                    for (let i = 0; i < totalArrows; i++) {
+                        const arrowDir = dir + (i - (totalArrows - 1) / 2) * spread;
+                        mas.sectorSlashEffects.push({
+                            type: 'arrow', x: cx, y: cy,
+                            dir: arrowDir, renderDir: arrowDir,
+                            speed: 420, vy: -30, gravity: 220, friction: 0.998,
+                            targetDist: attackDist, traveled: 0,
+                            age: 0, maxAge: attackDist / 420 * 2.0 + 0.5,
+                            damage: 0, pierce: wep?.pierce || 0, pierceCount: 0, hitEntities: [],
+                            stuck: false, stuckAge: 0, stuckMaxAge: 5,
+                            stuckAngle: (Math.random() - 0.5) * 0.3,
+                            embedRatio: 0.2 + Math.random() * 0.6
+                        });
+                    }
+                    // 挂碰撞回调（发 attack_npc，走普攻伤害）
+                    for (let ai = prevCount; ai < mas.sectorSlashEffects.length; ai++) {
+                        const arrow = mas.sectorSlashEffects[ai];
+                        if (arrow.type === 'arrow') {
+                            arrow.rangedTargets = pendingTargets.slice();
+                            arrow.onHitCallback = (targetId, isNPC) => {
+                                scene.ws.send(isNPC ? 'attack_npc' : 'attack', { target_id: targetId });
+                            };
+                        }
+                    }
+                } else if (mas) {
+                    // 无目标时也生成视觉箭矢
                     const totalArrows = 1 + multiArrow;
                     const spread = 0.18;
                     for (let i = 0; i < totalArrows; i++) {
@@ -690,10 +725,11 @@ export class NetworkCombatSystem {
                     const weaponDist = weapon ? (weapon.attackDistance || 100) : 100;
 
                     if (areaType === 'fan') {
-                        // 猛击：扇形
+                        // 猛击：扇形，方向用 2.5D（与 sectorDirection 一致）
                         const range = data.area_size || weaponDist;
-                        const dir = Math.atan2((data.target_y || transform.position.y) - transform.position.y,
-                                               (data.target_x || transform.position.x) - transform.position.x);
+                        const dx = (data.target_x || transform.position.x) - transform.position.x;
+                        const dy = (data.target_y || transform.position.y) - transform.position.y;
+                        const dir = Math.atan2(dy * 2, dx);
                         scene._showSkillRange({
                             areaType: 'fan', x: footCenter.x, y: footCenter.y,
                             rx: range, ry: range / 2, direction: dir,

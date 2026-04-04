@@ -303,7 +303,7 @@ func (s *DemoServer) handleCastSkill(session *PlayerSession, data json.RawMessag
 		hit := false
 		switch skill.AreaType {
 		case "single":
-			hit = id == req.TargetID && distance(session.x, session.y, p.x, p.y) <= skill.Range
+			hit = id == req.TargetID && isInEllipseRange(session.x, session.y, p.x, p.y, skill.Range)
 		case "fan":
 			// 扇形：以施法者为中心，朝目标方向，半角 45°（π/4）
 			dir := math.Atan2((req.TargetY-session.y)*2, req.TargetX-session.x)
@@ -1141,7 +1141,7 @@ func (s *DemoServer) handleCastSkillNPC(session *PlayerSession, data json.RawMes
 		hit := false
 		switch skill.AreaType {
 		case "single":
-			hit = npc.ID == req.TargetID && distance(session.x, session.y, npc.X, npc.Y) <= skill.Range
+			hit = npc.ID == req.TargetID && isInEllipseRange(session.x, session.y, npc.X, npc.Y, skill.Range)
 		case "fan":
 			dir := math.Atan2((req.TargetY-session.y)*2, req.TargetX-session.x)
 			hit = isInFanRange(session.x, session.y, npc.X, npc.Y, skill.Range, dir, math.Pi/4)

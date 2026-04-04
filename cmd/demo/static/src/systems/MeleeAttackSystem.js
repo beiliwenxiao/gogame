@@ -100,10 +100,10 @@ export class MeleeAttackSystem {
     // 更新刀光/箭光特效（使用真实 deltaTime）
     this.updateSectorSlashEffects(deltaTime);
 
-    // 计算鼠标方向角度（2.5D 等距视角：Y 轴 ×2 还原压缩）
+    // 计算鼠标方向角度（屏幕坐标系，渲染用）
     const dx = mouseWorldPos.x - playerCenter.x;
     const dy = mouseWorldPos.y - playerCenter.y;
-    this.sectorDirection = Math.atan2(dy * 2, dx);
+    this.sectorDirection = Math.atan2(dy, dx);
 
     // 判断近战/远程
     this.sectorIsRanged = this.checkIsRangedWeapon();
@@ -324,8 +324,8 @@ export class MeleeAttackSystem {
           y: playerCenter.y,
           dir: arrowDir,
           speed: speed,
-          vy: -30,                // 初始轻微上扬
-          gravity: 220,           // 重力（px/s²），让箭有明显下坠
+          vy: -10,                // 初始轻微上扬
+          gravity: 100,           // 重力（px/s²），弧线更平缓
           friction: 0.998,        // 极小阻力，几乎不减速，只靠重力产生弧线
           targetDist: flyDist,
           traveled: 0,
