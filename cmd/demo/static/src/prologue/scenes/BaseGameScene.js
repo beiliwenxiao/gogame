@@ -954,7 +954,7 @@ export class BaseGameScene extends PrologueScene {
         const spriteHeight = sprite?.height || 64;
         const playerCenter = {
           x: transform.position.x,
-          y: transform.position.y - spriteHeight / 2
+          y: transform.position.y - spriteHeight / 10
         };
         this.weaponRenderer.updateMouseAngle(mouseWorldPos, playerCenter, currentTime);
         

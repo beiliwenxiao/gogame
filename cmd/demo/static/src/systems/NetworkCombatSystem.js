@@ -799,6 +799,28 @@ export class NetworkCombatSystem {
                                     const delay = Math.random() * 800;
                                     setTimeout(() => {
                                         if (!scene.meleeAttackSystem) return;
+                                        // 收集落点附近的所有存活目标（碰撞时发 attack_npc）
+                                        const rainTargets = [];
+                                        for (const [id, entity] of scene.npcEntities) {
+                                            if (entity.dead) continue;
+                                            const tt = entity.getComponent('transform');
+                                            if (!tt) continue;
+                                            const ddx = tt.position.x - tx;
+                                            const ddy = tt.position.y - ty;
+                                            if (Math.sqrt(ddx * ddx + ddy * ddy) <= rainRadius) {
+                                                rainTargets.push({ id, entity, isNPC: true, transform: tt });
+                                            }
+                                        }
+                                        for (const [id, entity] of scene.remotePlayers) {
+                                            if (entity.dead) continue;
+                                            const tt = entity.getComponent('transform');
+                                            if (!tt) continue;
+                                            const ddx = tt.position.x - tx;
+                                            const ddy = tt.position.y - ty;
+                                            if (Math.sqrt(ddx * ddx + ddy * ddy) <= rainRadius) {
+                                                rainTargets.push({ id, entity, isNPC: false, transform: tt });
+                                            }
+                                        }
                                         scene.meleeAttackSystem.sectorSlashEffects.push({
                                             type: 'arrow',
                                             x: tx + (Math.random() - 0.5) * 20,
@@ -818,7 +840,11 @@ export class NetworkCombatSystem {
                                             stuckAngle: (Math.random() - 0.5) * 0.25,
                                             embedRatio: 0.3 + Math.random() * 0.4,
                                             isRainArrow: true,
-                                            groundY: ty
+                                            groundY: ty,
+                                            rangedTargets: rainTargets,
+                                            onHitCallback: (targetId, isNPC) => {
+                                                scene.ws.send(isNPC ? 'attack_npc' : 'attack', { target_id: targetId });
+                                            }
                                         });
                                     }, delay);
                                 }
