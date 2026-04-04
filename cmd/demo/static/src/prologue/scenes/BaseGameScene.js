@@ -417,19 +417,23 @@ export class BaseGameScene extends PrologueScene {
         console.log('BaseGameScene: 属性加点按钮被点击');
       },
       onEquipmentClick: (slotType, button) => {
-        console.log('BaseGameScene: 装备槽被点击', slotType, button);
         // 右键点击卸下装备
         if (button === 'right' && this.playerEntity) {
           const equipment = this.playerEntity.getComponent('equipment');
           if (equipment && equipment.slots[slotType]) {
-            this.equipmentSystem.unequip(this.playerEntity, slotType);
-            // 显示卸下装备的提示
+            const item = equipment.slots[slotType];
+            // 箭矢只是类型标记，卸下时直接清除，不放回背包
+            if (item.subType !== 'ammo') {
+              this.equipmentSystem.unequip(this.playerEntity, slotType);
+            } else {
+              equipment.unequip(slotType);
+            }
             const transform = this.playerEntity.getComponent('transform');
             if (transform) {
               this.floatingTextManager.addText(
                 transform.position.x,
                 transform.position.y - 30,
-                `卸下 ${equipment.slots[slotType].name}`,
+                `卸下 ${item.name}`,
                 '#ffff00'
               );
             }

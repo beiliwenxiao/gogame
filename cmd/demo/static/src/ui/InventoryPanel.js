@@ -890,8 +890,8 @@ export class InventoryPanel extends UIElement {
     
     const item = slot.item;
     
-    // 如果是装备，尝试装备
-    if (item.type === 'equipment' && equipmentComponent) {
+    // 如果是装备或弹药，尝试装备
+    if ((item.type === 'equipment' || item.type === 'ammo') && equipmentComponent) {
       const subType = item.subType; // 'weapon', 'armor', 'accessory' 等
       
       console.log(`尝试装备物品: ${item.name}, subType: ${subType}`);
@@ -905,22 +905,23 @@ export class InventoryPanel extends UIElement {
         speed: statsComponent.speed
       } : null;
       
-      // 从背包移除物品（箭矢等有数量的装备移除整组）
-      const stackQuantity = slot.quantity; // ItemStack 的实际堆叠数量
-      const removeCount = (item.subType === 'ammo') ? stackQuantity : 1;
-      inventoryComponent.removeItem(item.id, removeCount);
-      
-      // 箭矢等弹药类装备，保持 item.quantity 不变（只有攻击消耗才减少）
+      // 从背包移除物品（箭矢只设类型标记，不移除数量）
+      const stackQuantity = slot.quantity;
+      if (item.subType !== 'ammo') {
+        const removeCount = 1;
+        inventoryComponent.removeItem(item.id, removeCount);
+      }
       
       // 装备到对应槽位（兼容 subType 别名）
       const slotMap = { weapon: 'mainhand', shield: 'offhand', ammo: 'offhand' };
       const targetSlot = slotMap[subType] || subType;
-      const oldItem = equipmentComponent.equip(targetSlot, item);
+      // 箭矢：只存类型标记，不存数量
+      const itemToEquip = item.subType === 'ammo' ? { ...item, quantity: null } : item;
+      const oldItem = equipmentComponent.equip(targetSlot, itemToEquip);
       
-      // 如果有旧装备，放回背包
-      if (oldItem) {
+      // 如果有旧装备（非箭矢），放回背包
+      if (oldItem && oldItem.subType !== 'ammo') {
         inventoryComponent.addItem(oldItem, oldItem.quantity || 1);
-        console.log(`旧装备 ${oldItem.name} 已放回背包`);
       }
       
       // 切换主手武器时，如果新武器不是远程武器，自动卸下副手的箭矢

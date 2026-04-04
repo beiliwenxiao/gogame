@@ -210,17 +210,76 @@ export class NetworkCombatSystem {
         const selfCxCS = transform.position.x;
         const selfCyCS = transform.position.y - selfHCS / 10;
 
-        // ── 多重射击：连续普攻5次，每次间隔0.5秒 ──
+        // ── 多重射击：5波次，以普攻力度作为技能发射，不消耗武器冷却 ──
         if (skill && skill.name === '多重射击') {
             scene.skillCooldowns[skillId] = now + skill.cooldown * 1000;
+            const mas = scene.meleeAttackSystem;
             let count = 0;
-            const fireOnce = () => {
+            const fireWave = () => {
                 if (!scene.playerEntity || scene.playerEntity.dead) return;
-                this.attackAllInRange();
+
+                const t = scene.playerEntity.getComponent('transform');
+                if (!t) return;
+                const sp = scene.playerEntity.getComponent('sprite');
+                const h = sp?.height || 64;
+                const cx = t.position.x;
+                const cy = t.position.y - h / 10;
+
+                // 鼠标方向
+                let dir = mas ? mas.sectorDirection : 0;
+                if (scene.inputManager && scene.camera) {
+                    const mw = scene.inputManager.getMouseWorldPosition(scene.camera);
+                    if (mw) dir = Math.atan2((mw.y - cy) * 2, mw.x - cx);
+                }
+
+                // 武器参数
+                const eq = scene.playerEntity.getComponent('equipment');
+                const wep = eq?.getEquipment('mainhand');
+                const attackDist = wep?.attackDistance || 250;
+                const multiArrow = wep?.multiArrow || 0;
+
+                // 找范围内目标，发 cast_skill_npc（伤害由后端按 skill.Damage=1.0 计算）
+                const allTargets = [
+                    ...Array.from(scene.npcEntities.entries()).map(([id, e]) => ({ id, entity: e, isNPC: true })),
+                    ...Array.from(scene.remotePlayers.entries()).map(([id, e]) => ({ id, entity: e, isNPC: false }))
+                ];
+                for (const { id, entity, isNPC } of allTargets) {
+                    if (entity.dead) continue;
+                    const tt = entity.getComponent('transform');
+                    if (!tt) continue;
+                    const dx = tt.position.x - cx;
+                    const dy = (tt.position.y - cy) * 2;
+                    if (Math.sqrt(dx * dx + dy * dy) > attackDist) continue;
+                    scene.ws.send(isNPC ? 'cast_skill_npc' : 'cast_skill', {
+                        skill_id: skillId, target_id: id,
+                        target_x: tt.position.x, target_y: tt.position.y
+                    });
+                }
+
+                // 箭矢视觉特效（不消耗武器冷却）
+                if (mas) {
+                    const totalArrows = 1 + multiArrow;
+                    const spread = 0.18;
+                    for (let i = 0; i < totalArrows; i++) {
+                        const arrowDir = dir + (i - (totalArrows - 1) / 2) * spread;
+                        mas.sectorSlashEffects.push({
+                            type: 'arrow', x: cx, y: cy,
+                            dir: arrowDir, renderDir: arrowDir,
+                            speed: 420, vy: -30, gravity: 220, friction: 0.998,
+                            targetDist: attackDist, traveled: 0,
+                            age: 0, maxAge: attackDist / 420 * 2.0 + 0.5,
+                            damage: 0, pierce: 0, pierceCount: 0, hitEntities: [],
+                            stuck: false, stuckAge: 0, stuckMaxAge: 5,
+                            stuckAngle: (Math.random() - 0.5) * 0.3,
+                            embedRatio: 0.2 + Math.random() * 0.6
+                        });
+                    }
+                }
+
                 count++;
-                if (count < 5) setTimeout(fireOnce, 500);
+                if (count < 5) setTimeout(fireWave, 100);
             };
-            fireOnce();
+            fireWave();
             return;
         }
 
@@ -681,39 +740,40 @@ export class NetworkCombatSystem {
                             duration: 1.2
                         });
 
-                        // 天降箭雨：启动持续落箭（每0.5秒一批，持续8秒）
+                        // 天降箭雨：启动持续落箭（每1秒一批，持续5秒）
                         if (data.skill_name === '天降箭雨' && scene.meleeAttackSystem) {
                             const rainX = data.target_x;
                             const rainY = data.target_y;
-                            const rainRadius = data.area_size || 60;
+                            // 分布范围用武器攻击距离
                             const equipment2 = scene.playerEntity.getComponent('equipment');
                             const weapon2 = equipment2 ? equipment2.getEquipment('mainhand') : null;
+                            const weaponDist = weapon2?.attackDistance || 250;
+                            const rainRadius = weaponDist / 2;
                             const multiArrow = (weapon2?.multiArrow || 0) + 1; // 普攻箭矢数
-                            const rainCount = multiArrow * 10; // 10倍
+                            const rainCount = multiArrow * 5; // 5倍
                             let ticks = 0;
-                            const maxTicks = 16; // 8秒 / 0.5秒 = 16次
+                            const maxTicks = 5; // 5秒 / 1秒 = 5次
                             const spawnBatch = () => {
                                 if (!scene.meleeAttackSystem || ticks >= maxTicks) return;
                                 ticks++;
                                 for (let i = 0; i < rainCount; i++) {
-                                    // 随机落点在椭圆范围内
+                                    // 随机落点在椭圆范围内（等距视角 Y 轴压缩）
                                     const a = Math.random() * Math.PI * 2;
-                                    const r = Math.sqrt(Math.random()); // 均匀分布
+                                    const r = Math.sqrt(Math.random());
                                     const tx = rainX + Math.cos(a) * rainRadius * r;
                                     const ty = rainY + Math.sin(a) * (rainRadius * 0.5) * r;
-                                    // 从上方高处落下
                                     const startHeight = 180 + Math.random() * 80;
-                                    const delay = Math.random() * 400; // 0~400ms 随机延迟，错开落点
+                                    const delay = Math.random() * 800;
                                     setTimeout(() => {
                                         if (!scene.meleeAttackSystem) return;
                                         scene.meleeAttackSystem.sectorSlashEffects.push({
                                             type: 'arrow',
                                             x: tx + (Math.random() - 0.5) * 20,
                                             y: ty - startHeight,
-                                            dir: Math.PI / 2,       // 向下
+                                            dir: Math.PI / 2,
                                             renderDir: Math.PI / 2,
                                             speed: 0,
-                                            vy: 380 + Math.random() * 80, // 向下初速度
+                                            vy: 380 + Math.random() * 80,
                                             gravity: 60,
                                             friction: 1,
                                             targetDist: startHeight + 20,
@@ -725,11 +785,11 @@ export class NetworkCombatSystem {
                                             stuckAngle: (Math.random() - 0.5) * 0.25,
                                             embedRatio: 0.3 + Math.random() * 0.4,
                                             isRainArrow: true,
-                                            groundY: ty  // 落地目标 Y
+                                            groundY: ty
                                         });
                                     }, delay);
                                 }
-                                if (ticks < maxTicks) setTimeout(spawnBatch, 500);
+                                if (ticks < maxTicks) setTimeout(spawnBatch, 1000);
                             };
                             spawnBatch();
                         }

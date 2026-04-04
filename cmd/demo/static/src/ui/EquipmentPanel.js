@@ -506,18 +506,19 @@ export class EquipmentPanel extends UIElement {
               const unequippedItem = equipmentComponent.unequip(slotType);
               
               if (unequippedItem) {
-                // 放回背包（箭矢等弹药类需要传入 quantity）
+                // 箭矢只是类型标记，卸下时不放回背包（数量本来就在背包里）
+                if (unequippedItem.subType === 'ammo') {
+                  if (statsComponent) this.updateEntityStats(equipmentComponent, statsComponent);
+                  this.showEquipmentNotification(null, unequippedItem.name, {});
+                } else {
+                // 放回背包
                 const addQuantity = unequippedItem.quantity || 1;
                 const added = inventoryComponent.addItem(unequippedItem, addQuantity);
                 
                 if (added > 0) {
-                  console.log(`成功卸下装备: ${unequippedItem.name}，已放回背包`);
-                  
                   // 更新玩家属性（移除装备加成）
                   if (statsComponent) {
                     this.updateEntityStats(equipmentComponent, statsComponent);
-                    
-                    // 计算属性变化并显示提示
                     const statChanges = this.calculateStatChanges(oldStats, statsComponent);
                     this.showEquipmentNotification(null, unequippedItem.name, statChanges);
                   }
@@ -526,6 +527,7 @@ export class EquipmentPanel extends UIElement {
                   // 如果背包满了，重新装备
                   equipmentComponent.equip(slotType, unequippedItem);
                 }
+                } // end ammo else
               }
             }
           }

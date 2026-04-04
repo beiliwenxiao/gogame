@@ -367,7 +367,10 @@ export class ArenaScene extends BaseGameScene {
             const pdy2d = (this._arrowRainPending.y - selfCy) * 2;
             const pdist = Math.sqrt(pdx * pdx + pdy2d * pdy2d);
             const inRange = pdist <= (skill.range || 300);
-            const radius = skill.area_size || 60;
+            // 选框半径用武器攻击距离
+            const equipment = this.playerEntity?.getComponent('equipment');
+            const weapon = equipment?.getEquipment('mainhand');
+            const radius = weapon?.attackDistance ? weapon.attackDistance / 2 : skill.area_size || 125;
 
             // 更新选框颜色
             this.skillRangeIndicator.clear();
