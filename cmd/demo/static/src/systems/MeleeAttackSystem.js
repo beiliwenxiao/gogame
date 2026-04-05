@@ -485,25 +485,27 @@ export class MeleeAttackSystem {
 
         e.traveled += e.speed * deltaTime;
         e.x += Math.cos(e.dir) * e.speed * deltaTime;
-        // 2.5D：Y 轴飞行距离压缩为一半
-        e.y += Math.sin(e.dir) * e.speed * deltaTime * 0.5;
+        // 雨箭保持原始 Y 轴位移（垂直下落），普通箭矢 2.5D 压缩
+        if (e.isRainArrow) {
+          e.y += Math.sin(e.dir) * e.speed * deltaTime;
+        } else {
+          e.y += Math.sin(e.dir) * e.speed * deltaTime * 0.5;
+        }
         
         // 减速（空气阻力）
         e.speed *= Math.pow(e.friction ?? 0.99, deltaTime * 60);
 
-        // 重力：仅在水平方向（左右）时施加，上下方向不施加
-        // 30°~150° 和 210°~330° 视为上下方向
+        // 重力：雨箭始终施加，普通箭矢仅水平方向施加
         let dirDeg = ((e.dir * 180 / Math.PI) % 360 + 360) % 360;
-        const isVertical = (dirDeg > 30 && dirDeg < 150) || (dirDeg > 210 && dirDeg < 330);
+        const isVertical = !e.isRainArrow && ((dirDeg > 30 && dirDeg < 150) || (dirDeg > 210 && dirDeg < 330));
         if (!isVertical) {
           e.vy = (e.vy ?? 0) + (e.gravity ?? 100) * deltaTime;
           e.y += e.vy * deltaTime;
         }
 
-        // 实时更新箭矢朝向（跟随速度方向）
+        // 实时更新箭矢朝向
         const vx = Math.cos(e.dir) * e.speed;
         if (isVertical) {
-          // 上下方向：保持原始鼠标方向
           e.renderDir = e.dir;
         } else {
           const vy = e.vy ?? 0;
