@@ -386,13 +386,22 @@ export class MeleeAttackSystem {
         if (e.type === 'arrow' && !e.stuck) {
           e.traveled += e.speed * deltaTime;
           e.x += Math.cos(e.dir) * e.speed * deltaTime;
-          e.y += Math.sin(e.dir) * e.speed * deltaTime;
+          e.y += Math.sin(e.dir) * e.speed * deltaTime * 0.5;
           e.speed *= Math.pow(e.friction ?? 0.96, deltaTime * 60);
-          e.vy = (e.vy ?? 0) + (e.gravity ?? 180) * deltaTime;
-          e.y += e.vy * deltaTime;
+          let dirDeg2 = ((e.dir * 180 / Math.PI) % 360 + 360) % 360;
+          const isVert2 = (dirDeg2 > 30 && dirDeg2 < 150) || (dirDeg2 > 210 && dirDeg2 < 330);
+          if (!isVert2) {
+            e.vy = (e.vy ?? 0) + (e.gravity ?? 180) * deltaTime;
+            e.y += e.vy * deltaTime;
+          }
           const vx2 = Math.cos(e.dir) * e.speed;
-          if (Math.abs(vx2) > 0.1 || Math.abs(e.vy) > 0.1) {
-            e.renderDir = Math.atan2(e.vy, vx2);
+          if (isVert2) {
+            e.renderDir = e.dir;
+          } else {
+            const vy2 = e.vy ?? 0;
+            if (Math.abs(vx2) > 0.1 || Math.abs(vy2) > 0.1) {
+              e.renderDir = Math.atan2(vy2, vx2);
+            }
           }
           if (e.traveled >= e.targetDist || e.age >= e.maxAge) {
             e.stuck = true;
@@ -476,18 +485,31 @@ export class MeleeAttackSystem {
 
         e.traveled += e.speed * deltaTime;
         e.x += Math.cos(e.dir) * e.speed * deltaTime;
-        e.y += Math.sin(e.dir) * e.speed * deltaTime;
+        // 2.5D：Y 轴飞行距离压缩为一半
+        e.y += Math.sin(e.dir) * e.speed * deltaTime * 0.5;
         
         // 减速（空气阻力）
         e.speed *= Math.pow(e.friction ?? 0.99, deltaTime * 60);
-        // 重力：vy 每帧增加，Y 轴下坠
-        e.vy = (e.vy ?? 0) + (e.gravity ?? 100) * deltaTime;
-        e.y += e.vy * deltaTime;
+
+        // 重力：仅在水平方向（左右）时施加，上下方向不施加
+        // 30°~150° 和 210°~330° 视为上下方向
+        let dirDeg = ((e.dir * 180 / Math.PI) % 360 + 360) % 360;
+        const isVertical = (dirDeg > 30 && dirDeg < 150) || (dirDeg > 210 && dirDeg < 330);
+        if (!isVertical) {
+          e.vy = (e.vy ?? 0) + (e.gravity ?? 100) * deltaTime;
+          e.y += e.vy * deltaTime;
+        }
+
         // 实时更新箭矢朝向（跟随速度方向）
         const vx = Math.cos(e.dir) * e.speed;
-        const vy = e.vy ?? 0;
-        if (Math.abs(vx) > 0.1 || Math.abs(vy) > 0.1) {
-          e.renderDir = Math.atan2(vy, vx);
+        if (isVertical) {
+          // 上下方向：保持原始鼠标方向
+          e.renderDir = e.dir;
+        } else {
+          const vy = e.vy ?? 0;
+          if (Math.abs(vx) > 0.1 || Math.abs(vy) > 0.1) {
+            e.renderDir = Math.atan2(vy, vx);
+          }
         }
 
         // 联网模式：检测是否靠近预附着目标，靠近时飞行箭矢消失，附着箭矢显示
