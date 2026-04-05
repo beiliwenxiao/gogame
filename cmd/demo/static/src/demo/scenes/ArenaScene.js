@@ -152,7 +152,6 @@ export class ArenaScene extends BaseGameScene {
         // 联网模式：禁用 CombatSystem 的单机自动复活
         if (this.combatSystem) {
             this.combatSystem._arenaMode = true;
-            // 键盘技能快捷键走联网路径
             this.combatSystem.onNetworkSkillCast = (skillId) => {
                 this.castSkill(skillId);
             };
@@ -161,7 +160,16 @@ export class ArenaScene extends BaseGameScene {
         if (this.meleeAttackSystem) {
             this.meleeAttackSystem._arenaMode = true;
         }
-        
+        // 联网模式：武器装备时通知后端
+        if (this.inventoryPanel) {
+            this.inventoryPanel.onEquipWeapon = (defId) => {
+                if (this.ws) this.ws.send('equip', { equip_def_id: defId });
+            };
+        }
+        // 联网模式：装备卸下时通知后端
+        this.onSlotUnequipped = (slotType) => {
+            if (this.ws) this.ws.send('unequip', { slot_type: slotType });
+        };        
         // 用实际 canvas 尺寸覆盖逻辑尺寸，避免双重压缩
         const canvas = document.getElementById(this.canvasId);
         if (canvas) {
@@ -202,6 +210,11 @@ export class ArenaScene extends BaseGameScene {
             // 加载后端装备到前端 EquipmentComponent
             if (data.equipments && this.playerEntity) {
                 this.loadBackendEquipments(data.equipments);
+            }
+
+            // 加载后端背包到前端 InventoryComponent
+            if (data.inventory && this.playerEntity) {
+                this.loadBackendInventory(data.inventory);
             }
             
             // 加载初始 NPC
@@ -338,6 +351,24 @@ export class ArenaScene extends BaseGameScene {
 
         // 发送移动到服务端（昏迷时不发送，恐惧移动需要同步位置）
         if (!isStunned) this.sendMovement();
+
+        // 同步联网技能冷却到 CombatComponent（供 BottomControlBar 显示倒计时）
+        if (this.playerEntity && Object.keys(this.skillCooldowns).length > 0) {
+            const combat = this.playerEntity.getComponent('combat');
+            if (combat) {
+                const nowMs = Date.now();
+                for (const skill of combat.skills) {
+                    const backendId = skill.backendId;
+                    if (!backendId) continue;
+                    const expireAt = this.skillCooldowns[backendId];
+                    if (expireAt) {
+                        // 转换：过期时间戳 → 上次使用时间（lastUseTime = expireAt - cooldown*1000）
+                        const lastUse = expireAt - skill.cooldown * 1000;
+                        combat.skillCooldowns.set(skill.id, lastUse);
+                    }
+                }
+            }
+        }
         
         // 插值远程玩家位置 + NPC 位置（委托 MultiplayerManager）
         this.multiplayerManager.update(deltaTime);
@@ -1336,6 +1367,13 @@ export class ArenaScene extends BaseGameScene {
      */
     loadBackendEquipments(backendEquips) {
         EquipmentSyncSystem.loadFromBackend(this.playerEntity, backendEquips);
+    }
+
+    /**
+     * 将后端背包数据加载到前端 InventoryComponent（委托 EquipmentSyncSystem）
+     */
+    loadBackendInventory(backendInventory) {
+        EquipmentSyncSystem.loadInventoryFromBackend(this.playerEntity, backendInventory);
     }
 
     /**

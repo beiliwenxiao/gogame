@@ -37,20 +37,26 @@ export class EquipmentSyncSystem {
      * @param {Array}  backendEquips - 后端装备数组
      */
     static loadFromBackend(playerEntity, backendEquips) {
-        if (!playerEntity || !backendEquips || backendEquips.length === 0) return;
+        if (!playerEntity) return;
 
         const equipment = playerEntity.getComponent('equipment');
         if (!equipment) return;
 
+        // 先清空所有装备槽（后端权威，完全替换）
+        for (const slot in equipment.slots) {
+            equipment.slots[slot] = null;
+        }
+        equipment.recalculateBonusStats();
+
+        if (!backendEquips || backendEquips.length === 0) return;
+
         const charClass = playerEntity.class || 'warrior';
         const { SLOT_MAP, QUALITY_MAP, WEAPON_PROPS } = EquipmentSyncSystem;
 
-        // ── 弹药合并处理 ──────────────────────────────────────────
-        let totalAmmo = 0;
+        // ── 弹药类型标记处理（数量由 loadInventoryFromBackend 管理） ──
         let ammoTemplate = null;
         for (const eq of backendEquips) {
             if (eq.slot_type !== 'ammo') continue;
-            totalAmmo += (eq.quantity || 1);
             if (!ammoTemplate) {
                 ammoTemplate = {
                     id: eq.def.icon_id || eq.def.id,
@@ -63,12 +69,8 @@ export class EquipmentSyncSystem {
             }
         }
         if (ammoTemplate) {
-            // 副手只记录箭矢类型，不存数量；全部数量放入背包
+            // 副手只记录箭矢类型标记，不存数量
             equipment.equip('offhand', { ...ammoTemplate, quantity: null });
-            const inventory = playerEntity.getComponent('inventory');
-            if (inventory && totalAmmo > 0) {
-                inventory.addItem({ ...ammoTemplate, maxStack: 99 }, totalAmmo);
-            }
         }
 
         // ── 其他装备 ──────────────────────────────────────────────
@@ -81,8 +83,9 @@ export class EquipmentSyncSystem {
 
             const item = {
                 id: def.icon_id || def.id,
+                defId: def.id,  // 后端装备定义 ID，用于重新装备时同步
                 name: def.name,
-                type: eq.slot_type,
+                type: 'equipment',  // 统一用 'equipment'，方便背包装备逻辑识别
                 subType: frontendSlot,
                 rarity: QUALITY_MAP[def.quality] ?? 0,
                 level: def.level,
@@ -111,5 +114,49 @@ export class EquipmentSyncSystem {
         }
 
         console.log('EquipmentSyncSystem: 加载完成', backendEquips.map(e => e.def?.name));
+    }
+
+    /**
+     * 将后端背包数据加载到玩家实体的 InventoryComponent（完全替换）
+     */
+    static loadInventoryFromBackend(playerEntity, backendInventory) {
+        if (!playerEntity) return;
+        const inventory = playerEntity.getComponent('inventory');
+        if (!inventory) return;
+
+        inventory.clear();
+
+        if (!backendInventory || backendInventory.length === 0) return;
+        const { QUALITY_MAP, WEAPON_PROPS } = EquipmentSyncSystem;
+        const charClass = playerEntity.class || 'warrior';
+
+        for (const item of backendInventory) {
+            const def = item.def;
+            if (!def) continue;
+            const isAmmo = def.slot_type === 'ammo';
+            const isWeapon = def.slot_type === 'weapon';
+            const isRanged = charClass === 'archer' || def.pierce > 0 || def.multi_arrow > 0;
+            const frontendItem = {
+                id: def.icon_id || String(def.id),
+                defId: def.id,
+                name: def.name,
+                type: isAmmo ? 'ammo' : 'equipment',
+                subType: isAmmo ? 'ammo' : (isWeapon ? (isRanged ? 'bow' : 'mainhand') : def.slot_type),
+                rarity: QUALITY_MAP[def.quality] ?? 0,
+                level: def.level,
+                maxStack: isAmmo ? 99 : 1,
+                stats: { attack: def.attack || 0, defense: def.defense || 0, maxHp: def.hp || 0, speed: def.speed || 0 }
+            };
+            if (isWeapon) {
+                const wp = WEAPON_PROPS[charClass] || WEAPON_PROPS['warrior'];
+                frontendItem.attackSpeed    = def.attack_interval || wp.attackSpeed;
+                frontendItem.attackRange    = def.attack_range    || wp.attackRange;
+                frontendItem.attackDistance = def.attack_distance || wp.attackDistance;
+                frontendItem.pierce         = def.pierce     || 0;
+                frontendItem.multiArrow     = def.multi_arrow || 0;
+                frontendItem.ranged         = isRanged;
+            }
+            inventory.addItem(frontendItem, item.quantity);
+        }
     }
 }

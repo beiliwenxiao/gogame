@@ -312,15 +312,16 @@ export class NetworkCombatSystem {
                 }
 
                 count++;
-                if (count < 5) setTimeout(fireWave, 100);
+                if (count < 3) setTimeout(fireWave, 100);
             };
             fireWave();
             return;
         }
 
-        // ── 闪电箭：普攻1次，箭矢带闪电粒子特效 ──
+        // ── 闪电箭：普攻1次，箭矢带闪电特效，伤害走 cast_skill_npc（3倍） ──
         if (skill && skill.name === '闪电箭') {
-            scene._lightningArrowActive = true; // 标记下次箭矢带闪电特效
+            scene._lightningArrowActive = true;
+            scene._lightningArrowSkillId = skillId; // 记录 skillId 供碰撞时使用
             scene.skillCooldowns[skillId] = now + skill.cooldown * 1000;
             this.attackAllInRange();
             return;

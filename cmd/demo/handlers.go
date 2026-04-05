@@ -43,6 +43,8 @@ func (s *DemoServer) handleMessage(session *PlayerSession, msg ClientMessage) {
 		s.handleGetCharInfo(session)
 	case MsgGetEquipList:
 		s.handleGetEquipList(session)
+	case MsgGetInventory:
+		s.handleGetInventory(session)
 	default:
 		session.Send(ServerMessage{Type: MsgError, Data: "未知消息类型"})
 	}
@@ -200,7 +202,16 @@ func (s *DemoServer) handleUnequip(session *PlayerSession, data json.RawMessage)
 		session.Send(ServerMessage{Type: MsgError, Data: "参数错误或未登录"})
 		return
 	}
-	s.db.UnequipItem(session.charID, req.SlotType)
+	// 前端槽位名 → 后端 slot_type 映射
+	slotMap := map[string]string{
+		"mainhand": "weapon",
+		"offhand":  "ammo",
+	}
+	slotType := req.SlotType
+	if mapped, ok := slotMap[slotType]; ok {
+		slotType = mapped
+	}
+	s.db.UnequipItem(session.charID, slotType)
 	s.sendCharFullInfo(session)
 }
 
@@ -256,6 +267,9 @@ func (s *DemoServer) sendCharFullInfo(session *PlayerSession) {
 		"equipments": equips,
 		"skills":     skills,
 	}})
+	// 同步背包
+	inventory, _ := s.db.GetCharInventory(ch.ID)
+	session.Send(ServerMessage{Type: MsgInventory, Data: inventory})
 }
 
 func (s *DemoServer) handleGetCharInfo(session *PlayerSession) {
@@ -273,4 +287,13 @@ func (s *DemoServer) handleGetEquipList(session *PlayerSession) {
 	}
 	equips, _ := s.db.GetEquipmentDefs(session.charClass)
 	session.Send(ServerMessage{Type: MsgEquipList, Data: equips})
+}
+
+func (s *DemoServer) handleGetInventory(session *PlayerSession) {
+	if session.charID == 0 {
+		session.Send(ServerMessage{Type: MsgError, Data: "未创建角色"})
+		return
+	}
+	inventory, _ := s.db.GetCharInventory(session.charID)
+	session.Send(ServerMessage{Type: MsgInventory, Data: inventory})
 }

@@ -78,6 +78,8 @@ const (
 	MsgAttackNPC      = "attack_npc"
 	MsgCastSkillNPC   = "cast_skill_npc"
 	MsgUsePotion      = "use_potion"
+	MsgGetInventory   = "get_inventory"
+	MsgInventory      = "inventory"
 	MsgError          = "error"
 	MsgCampfireTick   = "campfire_tick" // 篝火倒计时广播
 )

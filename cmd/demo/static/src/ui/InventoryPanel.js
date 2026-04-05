@@ -65,8 +65,9 @@ export class InventoryPanel extends UIElement {
     this.onItemUse = options.onItemUse || null;
     this.onItemDrop = options.onItemDrop || null;
     this.onFilterChange = options.onFilterChange || null;
-    this.onEquipmentChange = options.onEquipmentChange || null; // 装备变化回调
-    this.canUseItem = options.canUseItem || null; // 检查物品是否可以使用的回调
+    this.onEquipmentChange = options.onEquipmentChange || null;
+    this.canUseItem = options.canUseItem || null;
+    this.onEquipWeapon = options.onEquipWeapon || null; // 武器装备时通知后端
   }
 
   /**
@@ -892,60 +893,10 @@ export class InventoryPanel extends UIElement {
     
     // 如果是装备或弹药，尝试装备
     if ((item.type === 'equipment' || item.type === 'ammo') && equipmentComponent) {
-      const subType = item.subType; // 'weapon', 'armor', 'accessory' 等
-      
-      console.log(`尝试装备物品: ${item.name}, subType: ${subType}`);
-      
-      // 保存装备前的属性
-      const oldStats = statsComponent ? {
-        attack: statsComponent.attack,
-        defense: statsComponent.defense,
-        maxHp: statsComponent.maxHp,
-        maxMp: statsComponent.maxMp,
-        speed: statsComponent.speed
-      } : null;
-      
-      // 从背包移除物品（箭矢只设类型标记，不移除数量）
-      const stackQuantity = slot.quantity;
-      if (item.subType !== 'ammo') {
-        const removeCount = 1;
-        inventoryComponent.removeItem(item.id, removeCount);
+      // 只通知后端装备，不做本地 ECS 操作，等后端 char_info + inventory 同步
+      if (item.defId && this.onEquipWeapon) {
+        this.onEquipWeapon(item.defId);
       }
-      
-      // 装备到对应槽位（兼容 subType 别名）
-      const slotMap = { weapon: 'mainhand', shield: 'offhand', ammo: 'offhand' };
-      const targetSlot = slotMap[subType] || subType;
-      // 箭矢：只存类型标记，不存数量
-      const itemToEquip = item.subType === 'ammo' ? { ...item, quantity: null } : item;
-      const oldItem = equipmentComponent.equip(targetSlot, itemToEquip);
-      
-      // 如果有旧装备（非箭矢），放回背包
-      if (oldItem && oldItem.subType !== 'ammo') {
-        inventoryComponent.addItem(oldItem, oldItem.quantity || 1);
-      }
-      
-      // 切换主手武器时，如果新武器不是远程武器，自动卸下副手的箭矢
-      if (targetSlot === 'mainhand' && !item.ranged) {
-        const offhandItem = equipmentComponent.getEquipment('offhand');
-        if (offhandItem && offhandItem.subType === 'ammo') {
-          const removedAmmo = equipmentComponent.unequip('offhand');
-          if (removedAmmo) {
-            inventoryComponent.addItem(removedAmmo, removedAmmo.quantity || 1);
-            console.log(`副手箭矢 ${removedAmmo.name} 已自动卸下到背包`);
-          }
-        }
-      }
-      
-      // 更新玩家属性（应用装备加成）
-      if (statsComponent) {
-        this.updateEntityStats(equipmentComponent, statsComponent);
-        
-        // 计算属性变化并显示提示
-        const statChanges = this.calculateStatChanges(oldStats, statsComponent);
-        this.showEquipmentNotification(item.name, oldItem?.name, statChanges, true);
-      }
-      
-      console.log(`成功装备物品: ${item.name} 到 ${subType} 槽位`);
     }
     // 如果是可使用的消耗品，直接使用
     else if (item.type === 'consumable' && item.usable) {

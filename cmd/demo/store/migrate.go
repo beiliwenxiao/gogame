@@ -56,6 +56,15 @@ func (s *Store) AutoMigrate() error {
 			FOREIGN KEY (character_id) REFERENCES characters(id),
 			FOREIGN KEY (equip_def_id) REFERENCES equipment_defs(id)
 		)`,
+		`CREATE TABLE IF NOT EXISTS char_inventory (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			character_id INTEGER NOT NULL,
+			equip_def_id INTEGER NOT NULL,
+			quantity INTEGER DEFAULT 1,
+			slot_index INTEGER DEFAULT -1,
+			FOREIGN KEY (character_id) REFERENCES characters(id),
+			FOREIGN KEY (equip_def_id) REFERENCES equipment_defs(id)
+		)`,
 		`CREATE TABLE IF NOT EXISTS skill_defs (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			name TEXT NOT NULL,

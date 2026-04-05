@@ -219,6 +219,13 @@ function bindWSHandlers() {
   ws.on('npc_drop', (data) => arena.onNPCDrop(data));
   ws.on('campfire_tick', (data) => arena.onCampfireTick(data));
 
+  // 背包同步
+  ws.on('inventory', (data) => {
+    if (arena.engineReady && arena.arenaScene && arena.arenaScene.playerEntity) {
+      arena.arenaScene.loadBackendInventory(data);
+    }
+  });
+
   ws.on('chat_msg', (data) => {
     const box = document.getElementById('chat-messages');
     const line = document.createElement('div');

@@ -402,7 +402,7 @@ export class BottomControlBar extends UIElement {
     this.renderSkillIcon(ctx, skill, x, y, size);
     
     // 冷却遮罩
-    const currentTime = performance.now();
+    const currentTime = Date.now();
     const cooldownMs = combatComponent.getSkillCooldownRemaining(skill.id, currentTime);
     const cooldown = cooldownMs / 1000; // 转换为秒
     

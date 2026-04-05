@@ -1,6 +1,9 @@
 package store
 
-import "fmt"
+import (
+	"fmt"
+	"log"
+)
 
 // GetEquipmentDefs 获取角色可用的装备列表
 func (s *Store) GetEquipmentDefs(class string) ([]EquipmentDef, error) {
@@ -44,10 +47,22 @@ func (s *Store) GetEquipmentDefByID(id int64) (*EquipmentDef, error) {
 	return &eq, nil
 }
 
-// EquipItem 装备物品
+// EquipItem 装备物品（把旧装备放回背包）
 func (s *Store) EquipItem(charID, equipDefID int64, slotType string) error {
-	// 先卸下同槽位的装备
+	// 先把同槽位的旧装备放回背包
+	var oldDefID int64
+	s.db.QueryRow(
+		"SELECT equip_def_id FROM char_equipments WHERE character_id=? AND slot_type=?",
+		charID, slotType,
+	).Scan(&oldDefID)
+	if oldDefID > 0 {
+		s.AddToInventory(charID, oldDefID, 1, 1)
+	}
 	s.db.Exec("DELETE FROM char_equipments WHERE character_id=? AND slot_type=?", charID, slotType)
+
+	// 从背包移除新装备
+	s.RemoveFromInventory(charID, equipDefID, 1)
+
 	_, err := s.db.Exec(
 		"INSERT INTO char_equipments (character_id, equip_def_id, slot_type) VALUES (?,?,?)",
 		charID, equipDefID, slotType,
@@ -58,39 +73,49 @@ func (s *Store) EquipItem(charID, equipDefID int64, slotType string) error {
 	return nil
 }
 
-// EquipAmmo 装备箭矢到副手（统计背包中所有同类箭矢总数后装备）
+// EquipAmmo 装备箭矢到副手（从背包取，不移动数量，只记录类型）
 func (s *Store) EquipAmmo(charID, equipDefID int64, quantity int) error {
-	// 统计该角色背包中所有同类箭矢的总数量
-	var total int
-	s.db.QueryRow(
-		"SELECT COALESCE(SUM(quantity),0) FROM char_equipments WHERE character_id=? AND equip_def_id=? AND slot_type='ammo'",
-		charID, equipDefID,
-	).Scan(&total)
+	// 检查背包中是否有该箭矢
+	total := s.GetInventoryCount(charID, equipDefID)
 	if total == 0 {
-		total = quantity // 背包无存量时使用传入值（如首次装备）
+		// 背包无存量时，初始化放入背包再装备（首次发放场景）
+		s.AddToInventory(charID, equipDefID, quantity, 99)
 	}
-
-	// 删除所有同类箭矢行，再写入一行合并后的数量
-	s.db.Exec(
-		"DELETE FROM char_equipments WHERE character_id=? AND equip_def_id=? AND slot_type='ammo'",
+	// 副手只记录类型，不移动数量
+	s.db.Exec("DELETE FROM char_equipments WHERE character_id=? AND slot_type='ammo'", charID)
+	_, err := s.db.Exec(
+		"INSERT INTO char_equipments (character_id, equip_def_id, slot_type, quantity) VALUES (?,?,'ammo',0)",
 		charID, equipDefID,
 	)
-	_, err := s.db.Exec(
-		"INSERT INTO char_equipments (character_id, equip_def_id, slot_type, quantity) VALUES (?,?,'ammo',?)",
-		charID, equipDefID, total,
-	)
-	if err != nil {
-		return fmt.Errorf("装备箭矢失败: %w", err)
-	}
-	return nil
+	return err
 }
 
-// UnequipItem 卸下装备
+// UnequipItem 卸下装备（放回背包）
 func (s *Store) UnequipItem(charID int64, slotType string) error {
-	_, err := s.db.Exec(
-		"DELETE FROM char_equipments WHERE character_id=? AND slot_type=?",
+	log.Printf("[UnequipItem] charID=%d, slotType=%s", charID, slotType)
+	if slotType == "ammo" {
+		_, err := s.db.Exec(
+			"DELETE FROM char_equipments WHERE character_id=? AND slot_type=?", charID, slotType,
+		)
+		return err
+	}
+	var defID int64
+	err := s.db.QueryRow(
+		"SELECT equip_def_id FROM char_equipments WHERE character_id=? AND slot_type=?",
 		charID, slotType,
+	).Scan(&defID)
+	log.Printf("[UnequipItem] found defID=%d, err=%v", defID, err)
+	if defID > 0 {
+		s.AddToInventory(charID, defID, 1, 1)
+		log.Printf("[UnequipItem] added to inventory: defID=%d", defID)
+	}
+	_, err = s.db.Exec(
+		"DELETE FROM char_equipments WHERE character_id=? AND slot_type=?", charID, slotType,
 	)
+	log.Printf("[UnequipItem] deleted from char_equipments, err=%v", err)
+	// 验证背包
+	count := s.GetInventoryCount(charID, defID)
+	log.Printf("[UnequipItem] inventory count for defID=%d: %d", defID, count)
 	return err
 }
 

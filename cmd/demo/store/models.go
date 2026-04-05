@@ -56,7 +56,17 @@ type CharEquipment struct {
 	CharacterID int64  `json:"character_id"`
 	EquipDefID  int64  `json:"equip_def_id"`
 	SlotType    string `json:"slot_type"`
-	Quantity    int    `json:"quantity"` // 数量（弹药类使用）
+	Quantity    int    `json:"quantity"`
+}
+
+// CharInventoryItem 背包物品
+type CharInventoryItem struct {
+	ID          int64        `json:"id"`
+	CharacterID int64        `json:"character_id"`
+	EquipDefID  int64        `json:"equip_def_id"`
+	Quantity    int          `json:"quantity"`
+	SlotIndex   int          `json:"slot_index"`
+	Def         EquipmentDef `json:"def"`
 }
 
 // SkillDef 技能定义

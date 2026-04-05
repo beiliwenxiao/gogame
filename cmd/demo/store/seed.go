@@ -104,12 +104,12 @@ func (s *Store) SeedDefaultEquipment() error {
 		// 旋风斩：150% 伤害/秒，持续5秒每秒1次，冷却15秒，以玩家为中心的椭圆范围（武器距离），后端动态设置 AreaSize
 		{Name: "旋风斩", Class: "warrior", Damage: 1.5, MPCost: 25, Cooldown: 15.0, Range: 0, AreaType: "ellipse", AreaSize: 0},
 		// 战吼：30% 伤害 + 恐惧逃跑3秒，椭圆范围 = 武器距离×3，后端动态设置 AreaSize
-		{Name: "战吼", Class: "warrior", Damage: 0.3, MPCost: 20, Cooldown: 20.0, Range: 0, AreaType: "ellipse", AreaSize: 0},
+		{Name: "战吼", Class: "warrior", Damage: 0.3, MPCost: 20, Cooldown: 30.0, Range: 0, AreaType: "ellipse", AreaSize: 60},
 		// 弓箭手技能
 		{Name: "射击", Class: "archer", Damage: 1.0, MPCost: 0, Cooldown: 0.6, Range: 200, AreaType: "single"},
-		{Name: "多重射击", Class: "archer", Damage: 1.0, MPCost: 20, Cooldown: 4.0, Range: 300, AreaType: "single", AreaSize: 0},
-		{Name: "闪电箭", Class: "archer", Damage: 3.0, MPCost: 30, Cooldown: 6.0, Range: 300, AreaType: "single", AreaSize: 0},
-		{Name: "天降箭雨", Class: "archer", Damage: 2.0, MPCost: 40, Cooldown: 8.0, Range: 300, AreaType: "circle", AreaSize: 60},
+		{Name: "多重射击", Class: "archer", Damage: 1.0, MPCost: 20, Cooldown: 6.0, Range: 300, AreaType: "single", AreaSize: 0},
+		{Name: "闪电箭", Class: "archer", Damage: 3.0, MPCost: 30, Cooldown: 15.0, Range: 300, AreaType: "single", AreaSize: 0},
+		{Name: "天降箭雨", Class: "archer", Damage: 2.0, MPCost: 40, Cooldown: 30.0, Range: 300, AreaType: "circle", AreaSize: 60},
 	}
 
 	for _, sk := range skills {
@@ -156,20 +156,6 @@ func (s *Store) GrantInitialEquipments(charID int64, class string) error {
 			"INSERT INTO char_equipments (character_id, equip_def_id, slot_type, quantity) VALUES (?,?,?,1)",
 			charID, defID, slotType,
 		)
-	}
-
-	// 弓箭手额外发放4捆铁箭（每捆99支）：1捆装备副手 + 3捆放背包
-	if class == "archer" {
-		var ironArrowID int64
-		s.db.QueryRow("SELECT id FROM equipment_defs WHERE name='铁箭' LIMIT 1").Scan(&ironArrowID)
-		if ironArrowID > 0 {
-			for i := 0; i < 4; i++ {
-				s.db.Exec(
-					"INSERT INTO char_equipments (character_id, equip_def_id, slot_type, quantity) VALUES (?,?,'ammo',99)",
-					charID, ironArrowID,
-				)
-			}
-		}
 	}
 
 	log.Printf("角色 %d 发放初始装备: %v", charID, equipped)

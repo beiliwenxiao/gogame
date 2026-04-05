@@ -1,4 +1,4 @@
-﻿/**
+/**
  * BaseGameScene - 游戏场景基类
  * 
  * 包含所有场景通用的基础功能：
@@ -417,17 +417,11 @@ export class BaseGameScene extends PrologueScene {
         console.log('BaseGameScene: 属性加点按钮被点击');
       },
       onEquipmentClick: (slotType, button) => {
-        // 右键点击卸下装备
-        if (button === 'right' && this.playerEntity) {
+        // 点击装备槽 → 只通知后端卸下，不做本地操作
+        if (this.playerEntity) {
           const equipment = this.playerEntity.getComponent('equipment');
           if (equipment && equipment.slots[slotType]) {
             const item = equipment.slots[slotType];
-            // 箭矢只是类型标记，卸下时直接清除，不放回背包
-            if (item.subType !== 'ammo') {
-              this.equipmentSystem.unequip(this.playerEntity, slotType);
-            } else {
-              equipment.unequip(slotType);
-            }
             const transform = this.playerEntity.getComponent('transform');
             if (transform) {
               this.floatingTextManager.addText(
@@ -437,6 +431,7 @@ export class BaseGameScene extends PrologueScene {
                 '#ffff00'
               );
             }
+            this.onSlotUnequipped?.(slotType);
           }
         }
       }
@@ -454,6 +449,12 @@ export class BaseGameScene extends PrologueScene {
       },
       onEquipmentChange: (messages) => {
         this.onEquipmentChanged(messages);
+      },
+      onEquipWeapon: (defId) => {
+        // 通知后端同步武器装备（更新 session 的武器属性）
+        if (this.ws) {
+          this.ws.send('equip', { equip_def_id: defId });
+        }
       }
     });
     

@@ -123,6 +123,7 @@ func (s *DemoServer) handleEnterArena(session *PlayerSession) {
 	s.arena.mu.Unlock()
 	skills, _ := s.db.GetSkillsByClass(session.charClass)
 	players := s.getArenaPlayersState()
+	inventory, _ := s.db.GetCharInventory(session.charID)
 	session.Send(ServerMessage{Type: MsgArenaState, Data: map[string]interface{}{
 		"players": players, "self_id": session.charID,
 		"campfire": map[string]interface{}{"x": CampfireX, "y": CampfireY, "radius": CampfireRadius},
@@ -130,7 +131,10 @@ func (s *DemoServer) handleEnterArena(session *PlayerSession) {
 		"skills":   skills,
 		"equipments": equips,
 		"npcs":     s.getAllNPCStates(),
+		"inventory": inventory,
 	}})
+	// 单独再发一次背包（兼容旧客户端）
+	session.Send(ServerMessage{Type: MsgInventory, Data: inventory})
 	s.arena.Broadcast(ServerMessage{Type: MsgPlayerJoined, Data: s.makePlayerState(session)}, session.charID)
 	log.Printf("玩家 %s(%s) 进入修罗斗场", session.charName, session.charClass)
 }
