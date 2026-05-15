@@ -13,6 +13,9 @@ import (
 	"syscall"
 
 	"gogame/cmd/demo/store"
+	"gogame/internal/engine"
+	"gogame/internal/network"
+	"gogame/internal/room"
 
 	"github.com/gorilla/websocket"
 )
@@ -243,6 +246,34 @@ func (a *Arena) BroadcastAll(msg ServerMessage) {
 	a.Broadcast(msg, -1)
 }
 
+// 编译时断言：Arena 实现 room.Broadcaster 接口
+var _ room.Broadcaster = (*Arena)(nil)
+
+// BroadcastBytes 实现 room.Broadcaster 接口。
+// 向房间内所有客户端发送已序列化的消息，排除指定 sessionID 的客户端。
+// 注意：demo 的 Arena 用 charID（int64）标识玩家，此处 excludeSessionID
+// 为空字符串时等同于 BroadcastAllBytes。
+func (a *Arena) BroadcastBytes(msg []byte, excludeSessionID string) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	for _, ps := range a.players {
+		if excludeSessionID != "" && fmt.Sprintf("%d", ps.charID) == excludeSessionID {
+			continue
+		}
+		ps.mu.Lock()
+		if err := ps.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+			log.Printf("BroadcastBytes 发送失败: %v", err)
+		}
+		ps.mu.Unlock()
+	}
+}
+
+// BroadcastAllBytes 实现 room.Broadcaster 接口。
+// 向房间内所有客户端发送已序列化的消息。
+func (a *Arena) BroadcastAllBytes(msg []byte) {
+	a.BroadcastBytes(msg, "")
+}
+
 // ---------- Demo 服务器 ----------
 
 type DemoServer struct {
@@ -250,16 +281,20 @@ type DemoServer struct {
 	arena    *Arena
 	sessions sync.Map // conn -> *PlayerSession
 	upgrader websocket.Upgrader
+	router   *network.MessageRouter
+	gameLoop engine.GameLoop // 引擎层 GameLoop，驱动竞技场 tick
 }
 
 func NewDemoServer(db *store.Store) *DemoServer {
-	return &DemoServer{
+	s := &DemoServer{
 		db:    db,
 		arena: NewArena(),
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool { return true },
 		},
 	}
+	s.initRouter()
+	return s
 }
 
 func (s *DemoServer) Start() error {
@@ -362,6 +397,10 @@ func main() {
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		<-sigCh
 		fmt.Println("\n正在关闭服务器...")
+		// 停止 GameLoop
+		if server.gameLoop != nil {
+			server.gameLoop.Stop()
+		}
 		os.Exit(0)
 	}()
 

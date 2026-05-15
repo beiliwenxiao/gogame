@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"gogame/internal/combat"
+	"gogame/internal/engine"
 )
 
 // SkillInfo 技能运行时信息
@@ -24,27 +25,16 @@ type SkillInfo struct {
 	AreaSize float64 `json:"area_size"`
 }
 
-func distance(x1, y1, x2, y2 float64) float64 {
-	return combat.Distance(x1, y1, x2, y2)
-}
-
-// isInEllipseRange 2.5D 椭圆范围判定（委托引擎层）
-func isInEllipseRange(cx, cy, tx, ty, radius float64) bool {
-	return combat.IsInEllipseRange(cx, cy, tx, ty, radius)
-}
-
-// isInFanRange 扇形范围判定（委托引擎层）
-func isInFanRange(cx, cy, tx, ty, radius, dir, halfAngle float64) bool {
-	return combat.IsInFanRange(cx, cy, tx, ty, radius, dir, halfAngle)
+// safeZone 篝火安全区配置（2.5D 椭圆）
+var safeZone = combat.ZoneConfig{
+	CenterX: CampfireX, CenterY: CampfireY,
+	Radius: CampfireRadius, Shape: "ellipse",
 }
 
 // isInSafeZone 判断坐标是否在篝火安全区内（2.5D 椭圆）
+// 保留为 demo 层便捷函数，绑定 CampfireX/Y/Radius 常量
 func isInSafeZone(x, y float64) bool {
-	return combat.IsInEllipseRange(CampfireX, CampfireY, x, y, CampfireRadius)
-}
-
-func calcDamage(atk, def float64) float64 {
-	return combat.CalcDamage(atk, def)
+	return combat.IsInZone(&safeZone, x, y)
 }
 
 func (s *DemoServer) makePlayerState(p *PlayerSession) map[string]interface{} {
@@ -201,11 +191,11 @@ func (s *DemoServer) handleAttack(session *PlayerSession, data json.RawMessage) 
 	if maxDist <= 0 {
 		maxDist = 100.0
 	}
-	if !isInEllipseRange(session.x, session.y, target.x, target.y, maxDist) {
+	if !combat.IsInEllipseRange(session.x, session.y, target.x, target.y, maxDist) {
 		session.Send(ServerMessage{Type: MsgError, Data: "超出攻击范围"})
 		return
 	}
-	damage := calcDamage(session.attack, target.defense)
+	damage := combat.CalcDamage(session.attack, target.defense)
 	damage *= 0.5 // PVP 伤害减半
 	isCrit := rand.Float64() < session.critRate
 	if isCrit {
@@ -307,15 +297,15 @@ func (s *DemoServer) handleCastSkill(session *PlayerSession, data json.RawMessag
 		hit := false
 		switch skill.AreaType {
 		case "single":
-			hit = id == req.TargetID && isInEllipseRange(session.x, session.y, p.x, p.y, skill.Range)
+			hit = id == req.TargetID && combat.IsInEllipseRange(session.x, session.y, p.x, p.y, skill.Range)
 		case "fan":
 			// 扇形：以施法者为中心，朝目标方向，半角 45°（π/4）
 			dir := math.Atan2((req.TargetY-session.y)*2, req.TargetX-session.x)
-			hit = isInFanRange(session.x, session.y, p.x, p.y, skill.Range, dir, math.Pi/4)
+			hit = combat.IsInFanRange(session.x, session.y, p.x, p.y, skill.Range, dir, math.Pi/4)
 		case "ellipse":
-			hit = isInEllipseRange(session.x, session.y, p.x, p.y, skill.AreaSize)
+			hit = combat.IsInEllipseRange(session.x, session.y, p.x, p.y, skill.AreaSize)
 		case "circle":
-			hit = distance(req.TargetX, req.TargetY, p.x, p.y) <= skill.AreaSize
+			hit = combat.Distance(req.TargetX, req.TargetY, p.x, p.y) <= skill.AreaSize
 		}
 		if hit {
 			targets = append(targets, p)
@@ -336,7 +326,7 @@ func (s *DemoServer) handleCastSkill(session *PlayerSession, data json.RawMessag
 		// 战吼：造成 30% 伤害 + 恐惧逃跑 3 秒
 		if skill.Name == "战吼" {
 			// 计算伤害
-			dmg := math.Round(calcDamage(session.attack*skill.Damage, t.defense) * 0.5) // PVP 减半
+			dmg := math.Round(combat.CalcDamage(session.attack*skill.Damage, t.defense) * 0.5) // PVP 减半
 			if dmg < 1 {
 				dmg = 1
 			}
@@ -381,7 +371,7 @@ func (s *DemoServer) handleCastSkill(session *PlayerSession, data json.RawMessag
 			}})
 			continue
 		}
-		dmg := math.Round(calcDamage(session.attack*skill.Damage, t.defense) * 0.5) // PVP 减半
+		dmg := math.Round(combat.CalcDamage(session.attack*skill.Damage, t.defense) * 0.5) // PVP 减半
 		if dmg < 1 {
 			dmg = 1
 		}
@@ -535,7 +525,7 @@ func (s *DemoServer) whirlwindTick() {
 			if npc.Dead {
 				continue
 			}
-			if isInEllipseRange(session.x, session.y, npc.X, npc.Y, session.WhirlwindAreaSize) {
+			if combat.IsInEllipseRange(session.x, session.y, npc.X, npc.Y, session.WhirlwindAreaSize) {
 				hits = append(hits, whirlwindHit{caster: session, npc: npc})
 			}
 		}
@@ -544,7 +534,7 @@ func (s *DemoServer) whirlwindTick() {
 			if id == session.charID || p.dead {
 				continue
 			}
-			if isInEllipseRange(session.x, session.y, p.x, p.y, session.WhirlwindAreaSize) {
+			if combat.IsInEllipseRange(session.x, session.y, p.x, p.y, session.WhirlwindAreaSize) {
 				hits = append(hits, whirlwindHit{caster: session, player: p})
 			}
 		}
@@ -572,7 +562,7 @@ func (s *DemoServer) whirlwindTick() {
 			if npc.Dead {
 				continue
 			}
-			dmg := math.Round(calcDamage(caster.WhirlwindDamage, npc.Defense))
+			dmg := math.Round(combat.CalcDamage(caster.WhirlwindDamage, npc.Defense))
 			if dmg < 1 {
 				dmg = 1
 			}
@@ -598,7 +588,7 @@ func (s *DemoServer) whirlwindTick() {
 			if t.dead {
 				continue
 			}
-			dmg := math.Round(calcDamage(caster.WhirlwindDamage, t.defense) * 0.5) // PVP 减半
+			dmg := math.Round(combat.CalcDamage(caster.WhirlwindDamage, t.defense) * 0.5) // PVP 减半
 			if dmg < 1 {
 				dmg = 1
 			}
@@ -661,39 +651,43 @@ func (s *DemoServer) whirlwindTick() {
 }
 
 // arenaTick 竞技场状态同步 tick 循环
+// 使用 engine.GameLoop 替代手动 time.NewTicker + select，
+// 以 NPCAITickHz（5Hz）作为 TickRate，各定时任务注册为不同阶段 handler。
 func (s *DemoServer) arenaTick() {
-	ticker := time.NewTicker(time.Second / StateSyncHz)
-	defer ticker.Stop()
+	gl := engine.NewGameLoop(engine.GameLoopConfig{
+		TickRate: NPCAITickHz,
+	})
+	s.gameLoop = gl
 
-	// NPC 刷新定时器：每60秒检查并刷新
-	npcTicker := time.NewTicker(60 * time.Second)
-	defer npcTicker.Stop()
+	// 派生常量：基于 TickRate 计算各周期对应的 tick 数
+	tickRate := uint64(NPCAITickHz)
+	whirlwindInterval := tickRate                // 旋风斩：每 5 tick = 1 秒
+	campfireInterval := tickRate                 // 篝火倒计时：每 5 tick = 1 秒
+	npcSpawnInterval := uint64(60) * tickRate    // NPC 刷新：每 300 tick = 60 秒
 
-	// NPC AI 定时器
-	aiTicker := time.NewTicker(time.Second / NPCAITickHz)
-	defer aiTicker.Stop()
+	// 篝火倒计时状态（闭包内维护）
+	campfireCountdown := CampfireRespawnHz
 
-	// 篝火倒计时（每秒 -1，到 0 时触发复活并重置）
-	campfireCountdownTicker := time.NewTicker(time.Second)
-	defer campfireCountdownTicker.Stop()
-	campfireCountdown := CampfireRespawnHz // 初始倒计时
+	// PhaseUpdate：NPC AI（每 tick）+ 旋风斩持续伤害（每秒）
+	gl.RegisterPhase(engine.PhaseUpdate, func(tick uint64, dt time.Duration) {
+		// NPC AI 每 tick 执行
+		s.npcAITick()
 
-	// 旋风斩持续伤害 ticker（每秒检查一次）
-	whirlwindTicker := time.NewTicker(time.Second)
-	defer whirlwindTicker.Stop()
+		// 旋风斩：每秒执行一次（每 whirlwindInterval 个 tick）
+		if tick%whirlwindInterval == 0 {
+			s.whirlwindTick()
+		}
+	})
 
-	// 首次立即刷新一波 NPC
-	s.spawnNPCWave()
+	// PhaseSync：状态同步（每 tick，因为 StateSyncHz == NPCAITickHz == 5）
+	gl.RegisterPhase(engine.PhaseSync, func(tick uint64, dt time.Duration) {
+		s.doStateSync()
+	})
 
-	for {
-		select {
-		case <-npcTicker.C:
-			s.spawnNPCWave()
-		case <-aiTicker.C:
-			s.npcAITick()
-		case <-ticker.C:
-			s.doStateSync()
-		case <-campfireCountdownTicker.C:
+	// PhaseCleanup：篝火倒计时（每秒）+ NPC 刷新（每 60 秒）
+	gl.RegisterPhase(engine.PhaseCleanup, func(tick uint64, dt time.Duration) {
+		// 篝火倒计时：每秒递减一次
+		if tick%campfireInterval == 0 {
 			campfireCountdown--
 			if campfireCountdown <= 0 {
 				campfireCountdown = CampfireRespawnHz
@@ -702,9 +696,20 @@ func (s *DemoServer) arenaTick() {
 			s.arena.BroadcastAll(ServerMessage{Type: MsgCampfireTick, Data: map[string]interface{}{
 				"countdown": campfireCountdown,
 			}})
-		case <-whirlwindTicker.C:
-			s.whirlwindTick()
 		}
+
+		// NPC 刷新：每 60 秒执行一次
+		if tick%npcSpawnInterval == 0 {
+			s.spawnNPCWave()
+		}
+	})
+
+	// 首次立即刷新一波 NPC（在 GameLoop 启动前）
+	s.spawnNPCWave()
+
+	// 启动 GameLoop（阻塞直到 Stop 被调用）
+	if err := gl.Start(); err != nil {
+		log.Printf("GameLoop 启动失败: %v", err)
 	}
 }
 
@@ -1016,13 +1021,13 @@ func (s *DemoServer) handleAttackNPC(session *PlayerSession, data json.RawMessag
 		maxDist = 100.0
 	}
 	// 2.5D 椭圆距离判定（与前端 attackAllInRange 保持一致）
-	if !isInEllipseRange(session.x, session.y, npc.X, npc.Y, maxDist) {
+	if !combat.IsInEllipseRange(session.x, session.y, npc.X, npc.Y, maxDist) {
 		s.arena.mu.Unlock()
 		session.Send(ServerMessage{Type: MsgError, Data: "超出攻击范围"})
 		return
 	}
 
-	damage := calcDamage(session.attack, npc.Defense)
+	damage := combat.CalcDamage(session.attack, npc.Defense)
 	isCrit := rand.Float64() < session.critRate
 	if isCrit {
 		damage *= session.critDmg
@@ -1145,14 +1150,14 @@ func (s *DemoServer) handleCastSkillNPC(session *PlayerSession, data json.RawMes
 		hit := false
 		switch skill.AreaType {
 		case "single":
-			hit = npc.ID == req.TargetID && isInEllipseRange(session.x, session.y, npc.X, npc.Y, skill.Range)
+			hit = npc.ID == req.TargetID && combat.IsInEllipseRange(session.x, session.y, npc.X, npc.Y, skill.Range)
 		case "fan":
 			dir := math.Atan2((req.TargetY-session.y)*2, req.TargetX-session.x)
-			hit = isInFanRange(session.x, session.y, npc.X, npc.Y, skill.Range, dir, math.Pi/4)
+			hit = combat.IsInFanRange(session.x, session.y, npc.X, npc.Y, skill.Range, dir, math.Pi/4)
 		case "ellipse":
-			hit = isInEllipseRange(session.x, session.y, npc.X, npc.Y, skill.AreaSize)
+			hit = combat.IsInEllipseRange(session.x, session.y, npc.X, npc.Y, skill.AreaSize)
 		case "circle":
-			hit = distance(req.TargetX, req.TargetY, npc.X, npc.Y) <= skill.AreaSize
+			hit = combat.Distance(req.TargetX, req.TargetY, npc.X, npc.Y) <= skill.AreaSize
 		}
 		if hit {
 			hits = append(hits, npcHit{npc: npc})
@@ -1168,7 +1173,7 @@ func (s *DemoServer) handleCastSkillNPC(session *PlayerSession, data json.RawMes
 	}
 	var dmgResults []npcDmgResult
 	for _, h := range hits {
-		dmg := math.Round(calcDamage(session.attack*skill.Damage, h.npc.Defense))
+		dmg := math.Round(combat.CalcDamage(session.attack*skill.Damage, h.npc.Defense))
 		if dmg < 1 {
 			dmg = 1
 		}
@@ -1220,7 +1225,7 @@ func (s *DemoServer) handleCastSkillNPC(session *PlayerSession, data json.RawMes
 			if id == session.charID || p.dead {
 				continue
 			}
-			if isInEllipseRange(session.x, session.y, p.x, p.y, skill.AreaSize) {
+			if combat.IsInEllipseRange(session.x, session.y, p.x, p.y, skill.AreaSize) {
 				playerTargets = append(playerTargets, p)
 			}
 		}
@@ -1268,7 +1273,7 @@ func (s *DemoServer) handleCastSkillNPC(session *PlayerSession, data json.RawMes
 	// 战吼：锁外广播玩家伤害 + 恐惧消息
 	if skill.Name == "战吼" {
 		for _, t := range playerTargets {
-			dmg := math.Round(calcDamage(session.attack*skill.Damage, t.defense) * 0.5)
+			dmg := math.Round(combat.CalcDamage(session.attack*skill.Damage, t.defense) * 0.5)
 			if dmg < 1 {
 				dmg = 1
 			}
@@ -1302,8 +1307,8 @@ func (s *DemoServer) handleCastSkillNPC(session *PlayerSession, data json.RawMes
 	}
 }
 
-// respawnNPC 5秒后复活 NPC
 // npcAITick NPC AI 主循环：寻敌、移动、攻击
+// AI 决策委托给 combat.ComputeNPCAI 纯函数，副作用（HP 修改、广播）在 demo 层执行。
 func (s *DemoServer) npcAITick() {
 	now := time.Now().UnixMilli()
 
@@ -1313,7 +1318,7 @@ func (s *DemoServer) npcAITick() {
 		return
 	}
 
-	// 收集存活玩家
+	// 收集存活玩家（过滤死亡和安全区内的玩家）
 	alivePlayers := make([]*PlayerSession, 0, len(s.arena.players))
 	for _, p := range s.arena.players {
 		if !p.dead && !isInSafeZone(p.x, p.y) {
@@ -1325,6 +1330,15 @@ func (s *DemoServer) npcAITick() {
 		return
 	}
 
+	// 构建目标列表（NPCAITarget 切片）
+	targets := make([]combat.NPCAITarget, 0, len(alivePlayers))
+	for _, p := range alivePlayers {
+		targets = append(targets, combat.NPCAITarget{
+			ID: p.charID, X: p.x, Y: p.y,
+			HP: p.hp, Defense: p.defense, Dead: p.dead,
+		})
+	}
+
 	// 收集需要广播的事件
 	type npcMove struct {
 		id   int64
@@ -1332,183 +1346,115 @@ func (s *DemoServer) npcAITick() {
 		dir  string
 	}
 	type npcAttack struct {
-		npcID     int64
-		npcName   string
-		targetID  int64
-		target    *PlayerSession
-		damage    float64
-		isCrit    bool
-		targetMax float64
+		npcID      int64
+		npcName    string
+		targetID   int64
+		target     *PlayerSession
+		damage     float64
+		isCrit     bool
+		targetMax  float64
 		targetName string
 	}
 	var moves []npcMove
 	var attacks []npcAttack
 
 	dt := 1.0 / float64(NPCAITickHz) // 每次 tick 的时间间隔（秒）
+	arenaMinX := -ArenaWidth + 30.0
+	arenaMaxX := ArenaWidth - 30.0
+	arenaMinY := 30.0
+	arenaMaxY := ArenaHeight - 30.0
 
 	for _, npc := range s.arena.npcs {
 		if npc.Dead {
 			continue
 		}
 
-		// 0. 检查昏迷状态（战吼效果）
-		if npc.StunUntil > 0 && now < npc.StunUntil {
-			// 昏迷中：无法行动
-			continue
+		// 构建 NPCState（只读快照）
+		npcState := &combat.NPCState{
+			ID: npc.ID, X: npc.X, Y: npc.Y,
+			HP: npc.HP, MaxHP: npc.MaxHP,
+			Attack: npc.Attack, Defense: npc.Defense,
+			Dead: npc.Dead, TargetID: npc.TargetID,
+			SpawnX: npc.SpawnX, SpawnY: npc.SpawnY,
+			LastAttackAt: npc.LastAttackAt,
+			FearUntil: npc.FearUntil, FearDirX: npc.FearDirX, FearDirY: npc.FearDirY,
+			StunUntil: npc.StunUntil, EnragedUntil: npc.EnragedUntil,
 		}
-		if npc.StunUntil > 0 && now >= npc.StunUntil {
+		config := &combat.NPCAIConfig{
+			AttackRange: npc.AttackRange, AggroRange: npc.AggroRange,
+			LeashRange: npc.LeashRange, AttackCD: npc.AttackCD,
+			CritRate: npc.CritRate, CritDmg: npc.CritDmg,
+			Speed: npc.Speed,
+		}
+
+		// 调用纯函数计算 AI 决策
+		action := combat.ComputeNPCAI(npcState, config, targets, now, dt, isInSafeZone, arenaMinX, arenaMaxX, arenaMinY, arenaMaxY)
+
+		// 应用状态更新提示
+		npc.TargetID = action.NewTargetID
+		if action.ClearStun {
 			npc.StunUntil = 0
 		}
-
-		// 1. 检查恐惧状态（保留旧逻辑，战吼现在用昏迷，此分支暂不触发）
-		if npc.FearUntil > 0 && now < npc.FearUntil {
-			// 恐惧中：向远离方向逃跑
-			moveSpeed := npc.Speed * dt * 1.5 // 恐惧时跑得更快
-			newX := npc.X + npc.FearDirX*moveSpeed
-			newY := npc.Y + npc.FearDirY*moveSpeed
-			// NPC 不能进入安全区
-			if !isInSafeZone(newX, newY) {
-				npc.X = newX
-				npc.Y = newY
-			}
-			// 边界限制
-			npc.X = math.Max(-ArenaWidth+30, math.Min(ArenaWidth-30, npc.X))
-			npc.Y = math.Max(30, math.Min(ArenaHeight-30, npc.Y))
-			// 计算方向
-			dir := "d"
-			if math.Abs(npc.FearDirX) > math.Abs(npc.FearDirY) {
-				if npc.FearDirX > 0 { dir = "r" } else { dir = "l" }
-			} else {
-				if npc.FearDirY > 0 { dir = "d" } else { dir = "u" }
-			}
-			moves = append(moves, npcMove{id: npc.ID, x: npc.X, y: npc.Y, dir: dir})
-			npc.TargetID = 0
-			continue
-		}
-		// 恐惧结束，清除状态，重置出生点为当前位置（避免跑回原出生点而不追击）
-		if npc.FearUntil > 0 && now >= npc.FearUntil {
+		if action.ClearFear {
 			npc.FearUntil = 0
-			npc.SpawnX = npc.X
-			npc.SpawnY = npc.Y
-			npc.EnragedUntil = now + 30000 // 恐惧结束后激怒30秒，无视仇恨范围追击
 		}
-
-		// 1. 寻找最近的存活玩家（使用 2.5D 椭圆距离，与前端判定一致）
-		var closest *PlayerSession
-		closestDist := math.MaxFloat64
-		for _, p := range alivePlayers {
-			dx := npc.X - p.x
-			dy := npc.Y - p.y
-			// 2.5D 等距视角：Y 轴压缩 0.5，等效距离 = sqrt(dx² + (dy/0.5)²) / 2
-			// 即 sqrt(dx² + (dy*2)²) / 2，与 isInEllipseRange 判定一致
-			d2d := math.Sqrt(dx*dx + (dy*2)*(dy*2)) / 2
-			if d2d < closestDist {
-				closestDist = d2d
-				closest = p
-			}
-		}
-		if closest == nil {
-			continue
-		}
-
-		// 2. 检查是否在仇恨范围内（激怒状态下无视仇恨范围）
-		isEnraged := npc.EnragedUntil > 0 && now < npc.EnragedUntil
-		if npc.EnragedUntil > 0 && now >= npc.EnragedUntil {
+		if action.ClearEnraged {
 			npc.EnragedUntil = 0
 		}
-		if !isEnraged && closestDist > npc.AggroRange {
-			// 超出仇恨范围，检查是否需要回归出生点
-			spawnDist := distance(npc.X, npc.Y, npc.SpawnX, npc.SpawnY)
-			if spawnDist > 5 {
-				// 缓慢回归出生点
-				dx := npc.SpawnX - npc.X
-				dy := npc.SpawnY - npc.Y
-				d := math.Sqrt(dx*dx + dy*dy)
-				moveSpeed := npc.Speed * dt * 0.5 // 回归速度减半
-				if moveSpeed > d {
-					moveSpeed = d
-				}
-				newX := npc.X + (dx/d)*moveSpeed
-				newY := npc.Y + (dy/d)*moveSpeed
-				// NPC 不能进入安全区
-				if !isInSafeZone(newX, newY) {
-					npc.X = newX
-					npc.Y = newY
-				}
-				// 回归时回血
-				if npc.HP < npc.MaxHP {
-					npc.HP = math.Min(npc.MaxHP, npc.HP+npc.MaxHP*0.05*dt)
-				}
-			}
-			npc.TargetID = 0
-			continue
+		if action.SetEnragedUntil > 0 {
+			npc.EnragedUntil = action.SetEnragedUntil
+		}
+		if action.ResetSpawn {
+			npc.SpawnX = npc.X
+			npc.SpawnY = npc.Y
+		}
+		if action.NewLastAttackAt > 0 {
+			npc.LastAttackAt = action.NewLastAttackAt
 		}
 
-		// 3. 锁定目标
-		npc.TargetID = closest.charID
+		// 根据决策类型执行副作用
+		switch action.Type {
+		case "fear_move":
+			npc.X = action.MoveX
+			npc.Y = action.MoveY
+			moves = append(moves, npcMove{id: npc.ID, x: npc.X, y: npc.Y, dir: action.MoveDir})
 
-		// 4. 在攻击范围内则攻击，否则移动靠近
-		if closestDist <= npc.AttackRange {
-			// 检查攻击冷却
-			cdMs := int64(npc.AttackCD * 1000)
-			if now-npc.LastAttackAt >= cdMs {
-				npc.LastAttackAt = now
-				// 计算伤害（不在锁内扣 HP，延迟到广播时确认 NPC 仍存活后再扣）
-				dmg := calcDamage(npc.Attack, closest.defense)
-				isCrit := rand.Float64() < npc.CritRate
-				if isCrit {
-					dmg *= npc.CritDmg
+		case "chase":
+			npc.X = action.MoveX
+			npc.Y = action.MoveY
+			moves = append(moves, npcMove{id: npc.ID, x: npc.X, y: npc.Y, dir: action.MoveDir})
+
+		case "return":
+			npc.X = action.MoveX
+			npc.Y = action.MoveY
+			if action.HealAmount > 0 {
+				npc.HP = math.Min(npc.MaxHP, npc.HP+action.HealAmount)
+			}
+
+		case "attack":
+			// 查找目标玩家 session（用于锁外二次检查时扣 HP）
+			var targetSession *PlayerSession
+			for _, p := range alivePlayers {
+				if p.charID == action.TargetID {
+					targetSession = p
+					break
 				}
-				dmg = math.Round(dmg)
+			}
+			if targetSession != nil {
 				attacks = append(attacks, npcAttack{
 					npcID:      npc.ID,
 					npcName:    npc.Name,
-					targetID:   closest.charID,
-					target:     closest,
-					damage:     dmg,
-					isCrit:     isCrit,
-					targetMax:  closest.maxHP,
-					targetName: closest.charName,
+					targetID:   action.TargetID,
+					target:     targetSession,
+					damage:     action.Damage,
+					isCrit:     action.IsCrit,
+					targetMax:  targetSession.maxHP,
+					targetName: targetSession.charName,
 				})
 			}
-		} else {
-			// 移动靠近目标（使用实际坐标差移动，但停止距离基于 2.5D 距离）
-			dx := closest.x - npc.X
-			dy := closest.y - npc.Y
-			d := math.Sqrt(dx*dx + dy*dy) // 实际移动用欧几里得距离
-			moveSpeed := npc.Speed * dt
-			stopDist := npc.AttackRange * 0.8
-			if moveSpeed > d-stopDist {
-				moveSpeed = d - stopDist
-			}
-			if moveSpeed > 0 {
-				newX := npc.X + (dx/d)*moveSpeed
-				newY := npc.Y + (dy/d)*moveSpeed
-				// NPC 不能进入安全区
-				if !isInSafeZone(newX, newY) {
-					npc.X = newX
-					npc.Y = newY
-				} else {
-					// 停在安全区边界外
-					continue
-				}
-				// 计算方向
-				dir := "d"
-				if math.Abs(dx) > math.Abs(dy) {
-					if dx > 0 {
-						dir = "r"
-					} else {
-						dir = "l"
-					}
-				} else {
-					if dy > 0 {
-						dir = "d"
-					} else {
-						dir = "u"
-					}
-				}
-				moves = append(moves, npcMove{id: npc.ID, x: npc.X, y: npc.Y, dir: dir})
-			}
+
+		case "idle":
+			// 无操作
 		}
 	}
 	s.arena.mu.Unlock()

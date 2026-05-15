@@ -127,3 +127,74 @@ inclusion: always
 数据更新，技能状态更新。
 7.如果用到goroutine锁，则一次性在锁内完成所有计算和状态修改（包括恐惧方向、FearUntil等等），然后统一 Unlock，锁外做所有广播。
 
+
+
+## Demo 与引擎层的架构分层原则
+
+### 判断功能归属的标准
+- 如果另一个联网场景也需要这个功能，它就应该在引擎层
+- 注册/登录/装备/背包等业务逻辑是 demo 特有的，不需要提取
+- 通用战斗计算、状态同步、NPC AI、房间管理、WebSocket 封装等属于引擎层
+
+### 后端已有但 demo 未复用的引擎模块
+- `internal/combat/range.go` — `Distance()`、`IsInEllipseRange()`、`IsInFanRange()`、`CalcDamage()`
+- `internal/network/` — `NetworkLayer`、`Session` 接口（WebSocket 会话管理）
+- `internal/room/` — `RoomManager`（房间广播/玩家管理）
+- `internal/sync/` — `StateSyncer`（增量状态同步）
+- `internal/engine/` — `GameLoop`（定时 tick 循环）
+- demo 中 `arena.go` 重复实现了以上所有功能，重构时应优先适配已有接口
+
+### 前端应抽象到引擎层的通用联网功能
+- 远程玩家管理（创建/更新/插值/删除）→ `BaseGameScene` 或 `MultiplayerManager`
+- 灵魂状态（死亡/复活 overlay + 双标志同步）→ 引擎层通用死亡处理
+- 增量状态同步处理（属性更新、实体创建/删除）→ 通用联网状态同步器
+- 篝火/安全区系统（渲染 + 判定）→ 通用场景兴趣点/安全区系统
+- 掉落物拾取触发逻辑 → `GroundDropPickupSystem` 完整封装
+- 状态效果驱动移动（恐惧/昏迷）→ `StatusEffectSystem` 或 `MovementSystem`
+- WebSocket 封装（`ws.js`）→ 复用 `MultiplayerManager` 通信能力
+
+### 重构原则
+- demo 层只负责：提供参数（坐标、半径、模板数据）+ 调用引擎 API + 注册回调
+- 引擎层负责：通用逻辑实现 + 提供可配置的接口/基类方法
+- 重构时先适配已有引擎接口，接口不满足再扩展，不要新建平行实现
+
+
+## 引擎层接口适配与重构设计模式
+
+### 后端引擎模块的适配差距
+- `internal/` 下的 `NetworkLayer`、`RoomManager`、`StateSyncer`、`GameLoop`、`CombatSystem` 已经很完善
+- 但接口偏向通用抽象（如 `Session.Send([]byte)`），demo 需要的是更贴近业务的薄封装层
+- 引擎层需要补充的是小工具：JSON 消息路由器（`MessageRouter`）、通用区域判定（`IsInZone`）、广播接口（`Broadcaster`）
+- 这些薄封装是连接引擎抽象和 demo 业务的胶水层
+
+### NPC AI 提取的纯函数设计模式
+- `npcAITick()` 混合了 AI 决策、状态修改、锁管理和广播，不能整体搬到引擎层
+- 正确做法：设计为纯函数 `ComputeNPCAI()`，输入 NPC 状态+目标列表，输出决策结果（chase/attack/return/fear_move），不修改任何状态
+- demo 层负责执行副作用（修改 HP、加锁、广播），引擎层不需要知道并发模型
+- 通用规律：引擎层提取的函数应尽量是纯函数，副作用留在调用方
+
+### 前端引擎联网扩展的安全模式
+- h5game 引擎的联网扩展必须用 `_arenaMode` 守卫所有新增方法
+- `_arenaMode === false`（默认值）时必须是 no-op，确保单机游戏不受影响
+- `BaseGameScene` 是正确的扩展点——联网死亡/复活、状态同步等通用能力加在这里
+- ArenaScene 只做 demo 特有配置（篝火渲染、技能注入等）
+- 已有的 `MultiplayerManager` 和 `NetworkCombatSystem` 是好的提取范例，新功能参考它们的模式
+
+
+## 多工作区路径与工具使用注意事项
+
+### 多工作区文件路径规则
+- 当打开多个工作区文件夹（如 `d:\gogame` 和 `d:\h5game`）时，文件路径必须使用 `gogame/path/to/file` 格式
+- 不能用绝对路径（`d:/gogame/...`），也不能用无前缀的相对路径（`.kiro/steering/custom.md`）
+- `fsAppend` 对路径解析比 `fsWrite`/`readFile` 更严格，无前缀路径会报 "Could not resolve to a URI" 错误
+- 安全做法：所有文件操作统一使用 `gogame/` 或 `h5game/` 前缀
+
+### 子代理调用失败时的降级策略
+- `invokeSubAgent` 可能因 "Too many requests" 等原因失败
+- 不应反复重试子代理，而应直接在主代理中完成工作
+- 子代理适合标准化流程（如首次创建需求文档），大量上下文的设计文档主代理直接操作更可靠
+
+### Spec 工作流的三阶段文件结构
+- Bugfix spec 完整流程：`bugfix.md`（需求）→ `design.md`（设计）→ `tasks.md`（任务）
+- `.config.kiro` 记录 `specType` 和 `workflowType`，用于后续阶段的流程判断
+- 任务列表 checkbox 语法（`- [ ]`）与 `taskStatus` 工具配合跟踪执行进度

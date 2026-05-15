@@ -4,48 +4,84 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+
+	"gogame/internal/network"
 )
+
+// initRouter 注册所有客户端消息处理器到 MessageRouter。
+func (s *DemoServer) initRouter() {
+	s.router = network.NewMessageRouter()
+
+	// 带 data 参数的 handler，直接注册
+	s.router.Register(MsgRegister, func(sess any, data json.RawMessage) {
+		s.handleRegister(sess.(*PlayerSession), data)
+	})
+	s.router.Register(MsgLogin, func(sess any, data json.RawMessage) {
+		s.handleLogin(sess.(*PlayerSession), data)
+	})
+	s.router.Register(MsgSelectClass, func(sess any, data json.RawMessage) {
+		s.handleSelectClass(sess.(*PlayerSession), data)
+	})
+	s.router.Register(MsgEquip, func(sess any, data json.RawMessage) {
+		s.handleEquip(sess.(*PlayerSession), data)
+	})
+	s.router.Register(MsgUnequip, func(sess any, data json.RawMessage) {
+		s.handleUnequip(sess.(*PlayerSession), data)
+	})
+	s.router.Register(MsgMove, func(sess any, data json.RawMessage) {
+		s.handleMove(sess.(*PlayerSession), data)
+	})
+	s.router.Register(MsgAttack, func(sess any, data json.RawMessage) {
+		s.handleAttack(sess.(*PlayerSession), data)
+	})
+	s.router.Register(MsgAttackNPC, func(sess any, data json.RawMessage) {
+		s.handleAttackNPC(sess.(*PlayerSession), data)
+	})
+	s.router.Register(MsgCastSkill, func(sess any, data json.RawMessage) {
+		s.handleCastSkill(sess.(*PlayerSession), data)
+	})
+	s.router.Register(MsgCastSkillNPC, func(sess any, data json.RawMessage) {
+		s.handleCastSkillNPC(sess.(*PlayerSession), data)
+	})
+	s.router.Register(MsgChat, func(sess any, data json.RawMessage) {
+		s.handleChat(sess.(*PlayerSession), data)
+	})
+	s.router.Register(MsgUsePotion, func(sess any, data json.RawMessage) {
+		s.handleUsePotion(sess.(*PlayerSession), data)
+	})
+
+	// 不带 data 参数的 handler，忽略 data
+	s.router.Register(MsgEnterArena, func(sess any, data json.RawMessage) {
+		s.handleEnterArena(sess.(*PlayerSession))
+	})
+	s.router.Register(MsgLeaveArena, func(sess any, data json.RawMessage) {
+		s.handleLeaveArena(sess.(*PlayerSession))
+	})
+	s.router.Register(MsgGetCharInfo, func(sess any, data json.RawMessage) {
+		s.handleGetCharInfo(sess.(*PlayerSession))
+	})
+	s.router.Register(MsgGetEquipList, func(sess any, data json.RawMessage) {
+		s.handleGetEquipList(sess.(*PlayerSession))
+	})
+	s.router.Register(MsgGetInventory, func(sess any, data json.RawMessage) {
+		s.handleGetInventory(sess.(*PlayerSession))
+	})
+}
+
 func (s *DemoServer) handleMessage(session *PlayerSession, msg ClientMessage) {
 	// 过滤高频 move 消息日志
 	if msg.Type != MsgMove {
 		log.Printf("收到消息: type=%s", msg.Type)
 	}
-	switch msg.Type {
-	case MsgRegister:
-		s.handleRegister(session, msg.Data)
-	case MsgLogin:
-		s.handleLogin(session, msg.Data)
-	case MsgSelectClass:
-		s.handleSelectClass(session, msg.Data)
-	case MsgEquip:
-		s.handleEquip(session, msg.Data)
-	case MsgUnequip:
-		s.handleUnequip(session, msg.Data)
-	case MsgEnterArena:
-		s.handleEnterArena(session)
-	case MsgLeaveArena:
-		s.handleLeaveArena(session)
-	case MsgMove:
-		s.handleMove(session, msg.Data)
-	case MsgAttack:
-		s.handleAttack(session, msg.Data)
-	case MsgAttackNPC:
-		s.handleAttackNPC(session, msg.Data)
-	case MsgCastSkill:
-		s.handleCastSkill(session, msg.Data)
-	case MsgCastSkillNPC:
-		s.handleCastSkillNPC(session, msg.Data)
-	case MsgChat:
-		s.handleChat(session, msg.Data)
-	case MsgUsePotion:
-		s.handleUsePotion(session, msg.Data)
-	case MsgGetCharInfo:
-		s.handleGetCharInfo(session)
-	case MsgGetEquipList:
-		s.handleGetEquipList(session)
-	case MsgGetInventory:
-		s.handleGetInventory(session)
-	default:
+
+	// 构造完整 JSON 消息用于 router 分发
+	rawMsg, err := json.Marshal(msg)
+	if err != nil {
+		session.Send(ServerMessage{Type: MsgError, Data: "消息序列化失败"})
+		return
+	}
+
+	if err := s.router.Dispatch(session, rawMsg); err != nil {
 		session.Send(ServerMessage{Type: MsgError, Data: "未知消息类型"})
 	}
 }

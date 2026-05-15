@@ -47,6 +47,44 @@ func IsInFanRange(cx, cy, tx, ty, radius, dir, halfAngle float64) bool {
 	return math.Abs(diff) <= halfAngle
 }
 
+// ---------- 通用区域判定 ----------
+
+// ZoneConfig 安全区/兴趣区域配置
+type ZoneConfig struct {
+	CenterX, CenterY float64
+	Radius           float64 // 椭圆水平半径（ellipse/circle 用）
+	Shape            string  // "ellipse", "circle", "rect"
+	// rect 专用
+	Width, Height float64
+}
+
+// IsInZone 通用区域判定。
+// 支持三种形状：
+//   - "ellipse": 2.5D 椭圆，rx=Radius, ry=Radius/2
+//   - "circle":  标准圆形，半径=Radius
+//   - "rect":    矩形，宽=Width, 高=Height
+//
+// 未知形状返回 false。
+func IsInZone(zone *ZoneConfig, x, y float64) bool {
+	dx := x - zone.CenterX
+	dy := y - zone.CenterY
+	switch zone.Shape {
+	case "ellipse":
+		rx := zone.Radius
+		ry := zone.Radius / 2
+		if rx == 0 || ry == 0 {
+			return false
+		}
+		return (dx*dx)/(rx*rx)+(dy*dy)/(ry*ry) <= 1
+	case "circle":
+		return dx*dx+dy*dy <= zone.Radius*zone.Radius
+	case "rect":
+		return math.Abs(dx) <= zone.Width/2 && math.Abs(dy) <= zone.Height/2
+	default:
+		return false
+	}
+}
+
 // CalcDamage 基础伤害计算公式：atk - def*0.5，带随机浮动 ±15%。
 // 最低伤害为 1。
 func CalcDamage(atk, def float64) float64 {

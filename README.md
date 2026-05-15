@@ -1,8 +1,8 @@
 # gogame - MMRPG游戏后端引擎
 
 #### 介绍
-gogame 是轻量级 MMRPG 游戏后端引擎，采用纯 Go 标准库 + 少量精选第三方库构建。引擎采用 ECS（Entity-Component-System）架构，支持帧同步（Lockstep）与状态同步（State Sync）双模式，提供层次化地图系统、装备系统、战斗系统等核心模块。
-引擎是纯后端服务。前端（如 html5-mmrpg-game）通过 WebSocket/TCP 协议与引擎通信，完全解耦。
+gogame 是轻量级 MMORPG 游戏后端引擎，采用纯 Go 标准库 + 少量精选第三方库构建。引擎采用 ECS（Entity-Component-System）架构，支持帧同步（Lockstep）与状态同步（State Sync）双模式，提供层次化地图系统、装备系统、战斗系统等核心模块。
+引擎是纯后端服务。前端（如 h5game）通过 WebSocket/TCP 协议与引擎通信，完全解耦。
 
 #### 软件架构
 
