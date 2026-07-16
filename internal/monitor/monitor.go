@@ -1,3 +1,15 @@
+/*************************************************************
+ * Copyright (c) 2026 Liu Xiao (beiliwenxiao)
+ *
+ * @project   YiJian18-Server 多人实时战斗游戏后端引擎
+ * @author    刘枭 (beiliwenxiao)
+ * @email     beiliwenxiao@qq.com
+ * @date      2026-03-01
+ * @blog      https://blog.csdn.net/beiliwenxiao
+ * @repo      https://github.com/beiliwenxiao/yijian18-server
+ *            https://gitee.com/coderaaa/yijian18-server
+ *************************************************************/
+
 // Package monitor 为 MMRPG 游戏引擎提供日志记录、指标采集、HTTP 指标暴露和 Webhook 告警功能。
 package monitor
 

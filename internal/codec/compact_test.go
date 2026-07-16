@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"gogame/internal/engine"
+	"yijian18-server/internal/engine"
 )
 
 // ---------- OperationDictionary tests ----------

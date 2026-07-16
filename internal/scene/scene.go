@@ -1,3 +1,15 @@
+/*************************************************************
+ * Copyright (c) 2026 Liu Xiao (beiliwenxiao)
+ *
+ * @project   YiJian18-Server 多人实时战斗游戏后端引擎
+ * @author    刘枭 (beiliwenxiao)
+ * @email     beiliwenxiao@qq.com
+ * @date      2026-03-01
+ * @blog      https://blog.csdn.net/beiliwenxiao
+ * @repo      https://github.com/beiliwenxiao/yijian18-server
+ *            https://gitee.com/coderaaa/yijian18-server
+ *************************************************************/
+
 // Package scene implements the Scene Manager for the MMRPG game engine.
 // It manages Scene lifecycle (create, load, unload), entity admission,
 // cross-scene entity transfer, and idle scene auto-unload.
@@ -8,9 +20,9 @@ import (
 	"sync"
 	"time"
 
-	"gogame/internal/aoi"
-	"gogame/internal/ecs"
-	"gogame/internal/engine"
+	"yijian18-server/internal/aoi"
+	"yijian18-server/internal/ecs"
+	"yijian18-server/internal/engine"
 )
 
 // Default values.

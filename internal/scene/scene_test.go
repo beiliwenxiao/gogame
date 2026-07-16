@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"gogame/internal/ecs"
-	"gogame/internal/engine"
+	"yijian18-server/internal/ecs"
+	"yijian18-server/internal/engine"
 )
 
 // helper to create a basic SceneManager for tests.

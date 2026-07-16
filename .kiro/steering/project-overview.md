@@ -1,10 +1,10 @@
 # 项目概览
 
 ## 项目名称
-gogame（模块名：gogame）
+yijian18-server（模块名：yijian18-server）
 
 ## 项目定位
-轻量级 MMRPG 游戏引擎，分为后端引擎（gogame）和前端引擎（html5-mmrpg-game）两部分。
+轻量级 MMRPG 游戏引擎，分为后端引擎（yijian18-server）和前端引擎（html5-mmrpg-game）两部分。
 
 - 后端引擎：纯 Go 实现，采用 ECS 架构，支持帧同步与状态同步双模式
 - 前端引擎：HTML5 + 原生 JS，基于 Canvas 渲染，代码位于 `cmd/demo/static/src/`
@@ -27,7 +27,7 @@ gogame（模块名：gogame）
 ## 目录结构
 
 ```
-gogame/
+yijian18-server/
 ├── internal/           # 后端引擎核心模块
 │   ├── config/         # 配置管理
 │   ├── monitor/        # 性能监控 & WorkerPool

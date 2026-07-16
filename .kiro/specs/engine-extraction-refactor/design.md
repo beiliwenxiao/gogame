@@ -2,16 +2,16 @@
 
 ## 概述
 
-本设计将 `cmd/demo` 中的通用功能提取回引擎层，分为后端（gogame `internal/`）和前端（h5game 引擎 `src/`）两部分。重构后 demo 只负责提供参数和调用引擎 API。
+本设计将 `cmd/demo` 中的通用功能提取回引擎层，分为后端（yijian18-server `internal/`）和前端（yijian18-engine 引擎 `src/`）两部分。重构后 demo 只负责提供参数和调用引擎 API。
 
 ### 核心原则
 
-1. **gogame 负责后端引擎**：网络通信、多人同步、服务端权威逻辑
-2. **h5game 负责前端引擎**：渲染、ECS、场景基类、联网场景通用能力
+1. **yijian18-server 负责后端引擎**：网络通信、多人同步、服务端权威逻辑
+2. **yijian18-engine 负责前端引擎**：渲染、ECS、场景基类、联网场景通用能力
 3. **demo 只做胶水**：提供配置参数、注册回调、组装引擎模块
-4. **不破坏单机游戏**：h5game 引擎的联网扩展通过 `_arenaMode` 标志和可选 mixin 实现，单机场景不受影响
+4. **不破坏单机游戏**：yijian18-engine 引擎的联网扩展通过 `_arenaMode` 标志和可选 mixin 实现，单机场景不受影响
 
-## 第一部分：后端重构（gogame `internal/`）
+## 第一部分：后端重构（yijian18-server `internal/`）
 
 ### 1.1 消除重复的范围判定/伤害计算函数（对应需求 1.1, 1.2）
 
@@ -186,7 +186,7 @@ demo 的 `Arena` 实现 `Broadcaster` 接口。这样其他 demo/游戏也能复
 **变更文件**：新增 `internal/room/broadcast.go`，修改 `cmd/demo/main.go`
 
 
-## 第二部分：前端重构（h5game 引擎 `src/`）
+## 第二部分：前端重构（yijian18-engine 引擎 `src/`）
 
 ### 设计原则
 
@@ -199,7 +199,7 @@ demo 的 `Arena` 实现 `Broadcaster` 接口。这样其他 demo/游戏也能复
 
 **现状**：`MultiplayerManager` 已经从 ArenaScene 中提取出来，管理远程玩家和 NPC 的生命周期、位置插值、增量状态同步。ArenaScene 通过委托调用。
 
-**设计**：保持现状，无需额外修改。`MultiplayerManager` 已经是 h5game 引擎层的通用类。
+**设计**：保持现状，无需额外修改。`MultiplayerManager` 已经是 yijian18-engine 引擎层的通用类。
 
 ### 2.2 联网死亡/复活系统提取到 BaseGameScene（对应需求 1.10）
 
@@ -477,4 +477,4 @@ export class StatusEffectMovementSystem {
 前端 `SafeZoneSystem.isInAnyZone(x,y)` 和后端 `combat.IsInZone(zone,x,y)` 对于相同的坐标和区域配置，必须返回相同的结果。
 
 ### CP5: 单机游戏无回归
-h5game 引擎中所有新增的联网方法，在 `_arenaMode === false`（默认值）时必须是无操作（no-op），不影响单机场景的任何行为。
+yijian18-engine 引擎中所有新增的联网方法，在 `_arenaMode === false`（默认值）时必须是无操作（no-op），不影响单机场景的任何行为。

@@ -1,3 +1,15 @@
+/*************************************************************
+ * Copyright (c) 2026 Liu Xiao (beiliwenxiao)
+ *
+ * @project   YiJian18-Server 多人实时战斗游戏后端引擎
+ * @author    刘枭 (beiliwenxiao)
+ * @email     beiliwenxiao@qq.com
+ * @date      2026-03-01
+ * @blog      https://blog.csdn.net/beiliwenxiao
+ * @repo      https://github.com/beiliwenxiao/yijian18-server
+ *            https://gitee.com/coderaaa/yijian18-server
+ *************************************************************/
+
 // Package combat implements the CombatSystem for the MMRPG game engine.
 // It manages combat contexts, skill execution pipeline, buff/debuff system,
 // AOI-based target selection, and combat log generation.
@@ -8,8 +20,8 @@ import (
 	"sync"
 	"time"
 
-	"gogame/internal/engine"
-	"gogame/internal/equipment"
+	"yijian18-server/internal/engine"
+	"yijian18-server/internal/equipment"
 )
 
 // Errors returned by CombatSystem operations.

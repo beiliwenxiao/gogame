@@ -1,3 +1,15 @@
+/*************************************************************
+ * Copyright (c) 2026 Liu Xiao (beiliwenxiao)
+ *
+ * @project   YiJian18-Server 多人实时战斗游戏后端引擎
+ * @author    刘枭 (beiliwenxiao)
+ * @email     beiliwenxiao@qq.com
+ * @date      2026-03-01
+ * @blog      https://blog.csdn.net/beiliwenxiao
+ * @repo      https://github.com/beiliwenxiao/yijian18-server
+ *            https://gitee.com/coderaaa/yijian18-server
+ *************************************************************/
+
 // Package persistence 为 MMRPG 游戏引擎提供数据持久化功能。
 // 实现了异步批量写入、自动保存、重试逻辑和恢复文件回退机制。
 package persistence
@@ -9,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"gogame/internal/engine"
+	"yijian18-server/internal/engine"
 )
 
 // Component 镜像引擎 ECS 的 Component 接口，供持久化模块使用。

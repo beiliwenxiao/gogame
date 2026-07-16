@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"gogame/internal/engine"
+	"yijian18-server/internal/engine"
 )
 
 // ---------- mock plugin ----------

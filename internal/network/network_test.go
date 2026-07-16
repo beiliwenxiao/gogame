@@ -12,7 +12,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"gogame/internal/engine"
+	"yijian18-server/internal/engine"
 )
 
 // ---------- helpers ----------

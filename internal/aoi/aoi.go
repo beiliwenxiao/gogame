@@ -1,10 +1,22 @@
+/*************************************************************
+ * Copyright (c) 2026 Liu Xiao (beiliwenxiao)
+ *
+ * @project   YiJian18-Server 多人实时战斗游戏后端引擎
+ * @author    刘枭 (beiliwenxiao)
+ * @email     beiliwenxiao@qq.com
+ * @date      2026-03-01
+ * @blog      https://blog.csdn.net/beiliwenxiao
+ * @repo      https://github.com/beiliwenxiao/yijian18-server
+ *            https://gitee.com/coderaaa/yijian18-server
+ *************************************************************/
+
 package aoi
 
 import (
 	"math"
 	"sync"
 
-	"gogame/internal/engine"
+	"yijian18-server/internal/engine"
 )
 
 // AOIBoundaryZone 定义两个 AOI 管理器之间的边界区域。

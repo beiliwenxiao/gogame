@@ -1,4 +1,4 @@
-module gogame
+module yijian18-server
 
 go 1.25.0
 

@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"gogame/internal/engine"
-	"gogame/internal/network"
+	"yijian18-server/internal/engine"
+	"yijian18-server/internal/network"
 )
 
 // ---------------------------------------------------------------------------

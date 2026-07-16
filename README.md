@@ -1,13 +1,22 @@
-# GoGame-多人实时战斗游戏后端引擎
+# 一剑十八年引擎服务端(YiJian18-Server)-多人实时战斗游戏后端引擎
 
 #### 介绍
-GoGame-多人实时战斗游戏后端引擎，采用纯 Go 标准库 + 少量精选第三方库构建。引擎采用 ECS（Entity-Component-System）架构，支持帧同步（Lockstep）与状态同步（State Sync）双模式，提供层次化地图系统、装备系统、战斗系统等核心模块。
-引擎是纯后端服务。前端（如 h5game）通过 WebSocket/TCP 协议与引擎通信，完全解耦。
+一剑十八年引擎服务端(YiJian18-Server)-多人实时战斗游戏后端引擎，采用纯 Go 标准库 + 少量精选第三方库构建。引擎采用 ECS（Entity-Component-System）架构，支持帧同步（Lockstep）与状态同步（State Sync）双模式，提供层次化地图系统、装备系统、战斗系统等核心模块。
+引擎是纯后端服务。前端（如 YiJian18-Engine）通过 WebSocket/TCP 协议与引擎通信，完全解耦。
+
+取名故事：2008年我主程的第一款游戏《铁血英雄》上线，当时在凤天工作室。
+后来因为各种原因，转战电商行业，直到2026年，仍然在做电商相关的工作(小程序：值得爱生活服务)。
+这中间，正好是十八年。作为一个大龄程序员(2026年45岁)，职业生涯已经见底，却无任何可以拿出手的作品。
+而我曾经的同事，却有不少大神级作品。
+再加上AI的方便，正好做做以前想做而没空做的项目。游戏正是其中一项。
+年轻时划出一剑，转眼已经过了十八年。于是取名一剑十八年。
+
+闻箫工作室 官方QQ群:58607027
 
 #### 软件架构
 
 ```
-gogame/
+yijian18-server/
 ├── internal/
 │   ├── config/       # 配置管理（ConfigManager）
 │   ├── monitor/      # 性能监控 & WorkerPool 并行计算
@@ -54,7 +63,7 @@ gogame/
 
 1. 创建并启动引擎实例：
    ```go
-   import "gogame/internal/engine"
+   import "yijian18-server/internal/engine"
 
    eng := engine.NewEngine(engine.Config{
        TickRate: 20, // 每秒 tick 次数
@@ -65,7 +74,7 @@ gogame/
 
 2. 注册消息处理器（通过 NetworkLayer）：
    ```go
-   import "gogame/internal/network"
+   import "yijian18-server/internal/network"
 
    nl := network.NewNetworkLayer(network.Config{
        Address: ":8080",
@@ -77,7 +86,7 @@ gogame/
 
 3. 使用插件系统扩展功能：
    ```go
-   import "gogame/internal/plugin"
+   import "yijian18-server/internal/plugin"
 
    pm := plugin.NewPluginManager()
    pm.Register(myPlugin)

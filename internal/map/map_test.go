@@ -3,7 +3,7 @@ package gamemap
 import (
 	"testing"
 
-	"gogame/internal/engine"
+	"yijian18-server/internal/engine"
 )
 
 // helper: create a simple walkable layer.

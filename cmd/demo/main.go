@@ -1,5 +1,17 @@
+/*************************************************************
+ * Copyright (c) 2026 Liu Xiao (beiliwenxiao)
+ *
+ * @project   YiJian18-Server 多人实时战斗游戏后端引擎
+ * @author    刘枭 (beiliwenxiao)
+ * @email     beiliwenxiao@qq.com
+ * @date      2026-03-01
+ * @blog      https://blog.csdn.net/beiliwenxiao
+ * @repo      https://github.com/beiliwenxiao/yijian18-server
+ *            https://gitee.com/coderaaa/yijian18-server
+ *************************************************************/
+
 // Package main 提供修罗斗场多人对战 Demo 服务器。
-// 使用 SQLite 存储（可替换为 MySQL 等），基于 gogame 引擎模块。
+// 使用 SQLite 存储（可替换为 MySQL 等），基于 yijian18-server 引擎模块。
 package main
 
 import (
@@ -12,10 +24,10 @@ import (
 	"sync"
 	"syscall"
 
-	"gogame/cmd/demo/store"
-	"gogame/internal/engine"
-	"gogame/internal/network"
-	"gogame/internal/room"
+	"yijian18-server/cmd/demo/store"
+	"yijian18-server/internal/engine"
+	"yijian18-server/internal/network"
+	"yijian18-server/internal/room"
 
 	"github.com/gorilla/websocket"
 )

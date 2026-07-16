@@ -3,7 +3,7 @@ package equipment
 import (
 	"testing"
 
-	"gogame/internal/engine"
+	"yijian18-server/internal/engine"
 )
 
 func baseAttrs() Attributes {

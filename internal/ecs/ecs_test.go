@@ -3,7 +3,7 @@ package ecs
 import (
 	"testing"
 
-	"gogame/internal/engine"
+	"yijian18-server/internal/engine"
 )
 
 // ---------------------------------------------------------------------------

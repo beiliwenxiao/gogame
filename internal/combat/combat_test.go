@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"gogame/internal/engine"
-	"gogame/internal/equipment"
+	"yijian18-server/internal/engine"
+	"yijian18-server/internal/equipment"
 )
 
 // ---------- helpers ----------

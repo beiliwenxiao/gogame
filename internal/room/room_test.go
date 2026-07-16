@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"gogame/internal/engine"
+	"yijian18-server/internal/engine"
 )
 
 // mockSession implements Session for testing.

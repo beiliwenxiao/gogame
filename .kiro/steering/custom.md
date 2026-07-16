@@ -11,7 +11,7 @@ inclusion: always
 - 所有功能，优先使用和复用已有系统的功能
 - 不要每次都写文档。除非用户要求，否则不要写文档
 - 调试完成后，如果要删除调试信息，要先询问用户是否同意删除，不要自动删除
-- gogame是后端引擎，html5-mmrpg-game是前端引擎
+- yijian18-server是后端引擎，html5-mmrpg-game是前端引擎
 - cmd/demo中，需要包含html5-mmrpg-game的代码，尽量采用html5-mmrpg-game的代码
 - cmd/demo的前端，尽量使用html5-mmrpg-game/src/prologue中的代码，不要自己另外写。
 - 添加和修改前端页面时，先参考一下 #html5-mmrpg-game/docs/usage_guide.md
@@ -174,7 +174,7 @@ inclusion: always
 - 通用规律：引擎层提取的函数应尽量是纯函数，副作用留在调用方
 
 ### 前端引擎联网扩展的安全模式
-- h5game 引擎的联网扩展必须用 `_arenaMode` 守卫所有新增方法
+- yijian18-engine 引擎的联网扩展必须用 `_arenaMode` 守卫所有新增方法
 - `_arenaMode === false`（默认值）时必须是 no-op，确保单机游戏不受影响
 - `BaseGameScene` 是正确的扩展点——联网死亡/复活、状态同步等通用能力加在这里
 - ArenaScene 只做 demo 特有配置（篝火渲染、技能注入等）
@@ -184,10 +184,10 @@ inclusion: always
 ## 多工作区路径与工具使用注意事项
 
 ### 多工作区文件路径规则
-- 当打开多个工作区文件夹（如 `d:\gogame` 和 `d:\h5game`）时，文件路径必须使用 `gogame/path/to/file` 格式
-- 不能用绝对路径（`d:/gogame/...`），也不能用无前缀的相对路径（`.kiro/steering/custom.md`）
+- 当打开多个工作区文件夹（如 `d:\yijian18-server` 和 `d:\yijian18-engine`）时，文件路径必须使用 `yijian18-server/path/to/file` 格式
+- 不能用绝对路径（`d:/yijian18-server/...`），也不能用无前缀的相对路径（`.kiro/steering/custom.md`）
 - `fsAppend` 对路径解析比 `fsWrite`/`readFile` 更严格，无前缀路径会报 "Could not resolve to a URI" 错误
-- 安全做法：所有文件操作统一使用 `gogame/` 或 `h5game/` 前缀
+- 安全做法：所有文件操作统一使用 `yijian18-server/` 或 `yijian18-engine/` 前缀
 
 ### 子代理调用失败时的降级策略
 - `invokeSubAgent` 可能因 "Too many requests" 等原因失败

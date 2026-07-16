@@ -1,4 +1,4 @@
-# 实现计划：MMRPG 游戏引擎 (gogame)
+# 实现计划：MMRPG 游戏引擎 (yijian18-server)
 
 ## 概述
 

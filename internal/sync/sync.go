@@ -1,3 +1,15 @@
+/*************************************************************
+ * Copyright (c) 2026 Liu Xiao (beiliwenxiao)
+ *
+ * @project   YiJian18-Server 多人实时战斗游戏后端引擎
+ * @author    刘枭 (beiliwenxiao)
+ * @email     beiliwenxiao@qq.com
+ * @date      2026-03-01
+ * @blog      https://blog.csdn.net/beiliwenxiao
+ * @repo      https://github.com/beiliwenxiao/yijian18-server
+ *            https://gitee.com/coderaaa/yijian18-server
+ *************************************************************/
+
 // Package sync 为 MMRPG 游戏引擎提供同步模块，
 // 支持帧同步（锁步）和权威状态同步两种模式。
 package sync
@@ -9,8 +21,8 @@ import (
 	"sync"
 	"time"
 
-	"gogame/internal/engine"
-	"gogame/internal/network"
+	"yijian18-server/internal/engine"
+	"yijian18-server/internal/network"
 )
 
 // ---------------------------------------------------------------------------

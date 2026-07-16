@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"gogame/internal/engine"
+	"yijian18-server/internal/engine"
 )
 
 // newTestAOI creates an AOIManager backed by a grid spatial index for testing.
